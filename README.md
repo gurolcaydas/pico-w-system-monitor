@@ -115,20 +115,27 @@ All interactions are strictly optimized for a 3-button navigation model:
 
 ## ⚡ 6. Internet Connection & Quality Monitor (`PING`)
 
-- **4-Target Real-Time Diagnostics**:
-  - `CF` (Cloudflare `1.1.1.1` — Anycast DNS)
-  - `GOOG` (Google `8.8.8.8` — Global Backbone)
-  - `CLOUD` (`caydas.cloud` — Personal Remote Server)
-  - `GW` (Local Router Gateway — Wi-Fi link health)
-- **Quality Grade System**: Borderless faded pill badges (`GREAT` <30ms, `GOOD` <60ms, `FAIR` <120ms, `POOR` >=120ms, `LOSS`).
-- **Real-Time Telemetry & Jitter**:
-  - Hero latency in bold digits + `JIT: Xms` (packet-to-packet jitter variance).
+- **View A — 8-Site NOC Landing Page**:
+  - Displays all 8 critical network checkpoints across 8 clean rows (`row_h = 13`):
+    - `GW` (Local Router Gateway)
+    - `CF` (Cloudflare `1.1.1.1`)
+    - `GOOG` (Google `8.8.8.8`)
+    - `CLOUD` (`caydas.cloud` — Personal Remote Server)
+    - `QUAD9` (Quad9 `9.9.9.9`)
+    - `OPEN` (OpenDNS `208.67.222.222`)
+    - `LUMEN` (Lumen `4.2.2.2`)
+    - `CF2` (Cloudflare `1.0.0.1`)
+  - Displays target abbreviation, address, and color-coded latest ping time.
+  - Active selection highlighted with `>` cursor and cyan line.
+  - Round-robin background auto-pinging refreshes all 8 targets continuously.
+- **View B — Single-Target Quality Detail**:
+  - Hero latency in bold digits + borderless faded Quality Grade pill badge (`GREAT` <30ms, `GOOD` <60ms, `FAIR` <120ms, `POOR` >=120ms, `LOSS`).
+  - Consecutive packet jitter (`JIT: Xms`).
   - Char-sized Min (`↓`) & Max (`↑`) arrows + Packet Loss rate (`LOSS X%`).
-  - **16-Bar Response Time Histogram Chart**: Live pulse telemetry automatically updating every 2.5s.
+  - **16-Bar Response Time Histogram Chart**: Live pulse telemetry updating every 2.0s.
 - **Hardware Controls**:
-  - `KEY3`: Cycle targets (`CF` ↔ `GOOG` ↔ `CLOUD` ↔ `GW`).
-  - `KEY2`: Send instant test probe.
-  - `KEY1`: Return to main menu.
+  - On View A: `KEY3` moves cursor, `KEY2` opens Detail View, `KEY1` exits to SYS MENU.
+  - On View B: `KEY3` cycles targets, `KEY2` sends instant re-probe, `KEY1` returns to View A Landing Page.
 
 ---
 

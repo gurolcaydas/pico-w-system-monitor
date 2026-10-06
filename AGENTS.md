@@ -47,21 +47,27 @@
 - **Garbage Collection**: Run `gc.collect()` before and after heavy network operations (DNS lookup, HTTP socket reads, mbedTLS handshakes).
 
 ## 4. Internet Quality & Ping Architecture (`PING`)
-- **Multi-Target Diagnostic**: Cycles 4 critical network checkpoints:
-  - `CF` (Cloudflare `1.1.1.1` - Fast Anycast DNS)
-  - `GOOG` (Google `8.8.8.8` - Global Backbone)
-  - `CLOUD` (`caydas.cloud` - Personal Remote Server)
-  - `GW` (Local Router Gateway via `wlan.ifconfig()[2]` - Wi-Fi Link Health)
-- **Quality Grade Badges**: Faded pill badges (`GREAT` <30ms, `GOOD` <60ms, `FAIR` <120ms, `POOR` >=120ms, `LOSS`).
-- **Telemetry Metrics**:
-  - Hero latency in big numbers + `JIT: Xms` (consecutive packet variance).
-  - Daily Min (`↓`) & Max (`↑`) arrows + Packet Loss percentage (`LOSS X%`).
+- **View A (Landing Page - 8-Site NOC List)**:
+  - 8 lines across the screen (`row_h = 13`, `start_y = 20`), one target per line:
+    - `GW` (Local Router Gateway)
+    - `CF` (Cloudflare `1.1.1.1`)
+    - `GOOG` (Google `8.8.8.8`)
+    - `CLOUD` (`caydas.cloud` - Personal Remote Server)
+    - `QUAD9` (Quad9 `9.9.9.9`)
+    - `OPEN` (OpenDNS `208.67.222.222`)
+    - `LUMEN` (Lumen `4.2.2.2`)
+    - `CF2` (Cloudflare `1.0.0.1`)
+  - Each row shows: Target label, address, latest ping time (color-coded), and horizontal 1px divider.
+  - Active selection highlighted with `>` cursor and cyan line.
+  - Round-robin auto-probing in background updates all 8 targets continuously.
+- **View B (Single-Target Detail)**:
+  - Hero latency in big digits + Quality Grade pill badge (`GREAT` <30ms, `GOOD` <60ms, `FAIR` <120ms, `POOR` >=120ms, `LOSS`).
+  - Consecutive packet jitter (`JIT: Xms`).
+  - Char-sized Min (`↓`) & Max (`↑`) arrow icons + Packet Loss percentage (`LOSS X%`).
   - 16-bar response time histogram chart (`ui.latency_chart`) plotting live latency pulses.
-- **Controls & Live Telemetry**:
-  - `KEY3`: Cycle target (`CF` ↔ `GOOG` ↔ `CLOUD` ↔ `GW`).
-  - `KEY2`: Instant re-probe.
-  - `KEY1`: Return to main menu.
-  - Auto-pings every 2.5s while active to continuously update the live chart.
+- **Hardware Controls**:
+  - On View A: `KEY3` moves cursor, `KEY2` enters Detail View, `KEY1` exits to SYS MENU.
+  - On View B: `KEY3` cycles targets, `KEY2` sends instant re-probe, `KEY1` returns to View A Landing Page.
 
 ## 5. Sites Monitor Architecture
 - **View A (Overview)**: 2-column NOC list showing up to 16 websites simultaneously (8 rows × 2 columns), with vertical divider at `x = 63` and color-coded status dots (Green = UP, Red = DOWN, Yellow = WAIT).
