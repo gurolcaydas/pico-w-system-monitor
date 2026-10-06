@@ -478,7 +478,7 @@ def render_html(temp, free_kb, rssi, uptime_s):
 body{{font-family:-apple-system,system-ui,sans-serif;background:#0b0f19;color:#fff;margin:0;padding:16px;display:flex;justify-content:center}}
 .c{{background:#161b26;border:1px solid #384253;border-radius:12px;padding:18px;max-width:390px;width:100%}}
 h1{{font-size:18px;margin:0 0 14px;color:#6366f1;display:flex;justify-content:space-between;align-items:center}}
-.badge{{background:#10b981;color:#0b0f19;font-size:11px;font-weight:700;padding:2px 7px;border-radius:12px}}
+.badge{{background:rgba(16,185,129,0.18);color:#34d399;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px}}
 .g{{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}}
 .s{{background:#0b0f19;border:1px solid #222938;border-radius:8px;padding:10px}}
 .l{{font-size:10px;color:#9ca3af;text-transform:uppercase}}

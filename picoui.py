@@ -195,26 +195,50 @@ def footer(lcd, k3="^", k2="v", k1="SELECT"):
     hint_str = f"K3:{k3}  K2:{k2}  K1:{k1}"
     draw_centered(lcd, hint_str, 117, Theme.INFO, font="6x8")
 
+def get_badge_colors(variant):
+    """
+    Returns (bg_color, fg_color) for borderless faded badges.
+    bg_color: subtle faded dark tint
+    fg_color: bright vibrant high-contrast font
+    """
+    if variant == "primary":
+        return color565(26, 30, 60), color565(165, 180, 252) # Faded indigo, bright indigo
+    elif variant == "success":
+        return color565(8, 42, 25), color565(52, 211, 153)   # Faded emerald, bright emerald
+    elif variant == "warning":
+        return color565(48, 36, 10), color565(253, 224, 71)  # Faded amber, bright amber
+    elif variant == "danger":
+        return color565(48, 16, 25), color565(251, 113, 133) # Faded rose, bright rose
+    elif variant == "info":
+        return color565(10, 40, 52), color565(103, 232, 249) # Faded cyan, bright cyan
+    return color565(30, 36, 48), color565(240, 244, 250)
+
 def card(lcd, x, y, w, h, is_active=False, border_color=None):
     """
-    Container Card with elevation and border.
-    Active cards feature highlighted borders and brighter surface color.
+    Container Card with elevation (zero outer border boxes).
     """
     bg = Theme.SURFACE_ALT if is_active else Theme.SURFACE
-    b_color = border_color if border_color else (Theme.BORDER_FOCUS if is_active else Theme.BORDER)
     lcd.fill_rect(x, y, w, h, bg)
-    lcd.rect(x, y, w, h, b_color)
 
-def badge(lcd, x, y, text, variant="info"):
+def badge(lcd, x, y, text, variant="info", align_right=False):
     """
-    Pill badge / tag (e.g., [LIVE], [WARN], [ONLINE]).
+    Minimalist borderless pill badge with faded tint background and bright font.
+    Zero border boxes (no lcd.rect).
     """
-    v_color = get_variant_color(variant)
+    bg_color, fg_color = get_badge_colors(variant)
     w = len(text) * 6 + 6
     h = 10
-    lcd.fill_rect(x, y, w, h, Theme.SURFACE)
-    lcd.rect(x, y, w, h, v_color)
-    draw_text(lcd, text, x + 3, y + 1, v_color, font="6x8")
+
+    # Auto clamp or align to right margin so long text never overflows the 128px screen
+    if align_right or (x is None) or (x >= 80) or (x + w > Theme.WIDTH - 4):
+        x = max(0, Theme.WIDTH - 4 - w)
+
+    # Clean rounded pill background (subtle corner clipping, no outer border box)
+    lcd.fill_rect(x + 1, y, w - 2, h, bg_color)
+    lcd.fill_rect(x, y + 1, w, h - 2, bg_color)
+
+    # Bright, crisp 6x8 font
+    draw_text(lcd, text, x + 3, y + 1, fg_color, font="6x8")
 
 def progress_bar(lcd, x, y, w, h, percent, variant="primary"):
     """
@@ -323,12 +347,13 @@ def list_menu(lcd, items, selected_idx, start_y=20, max_visible=4):
 
 def alert_modal(lcd, title, message, variant="info", prompt=None):
     """
-    Centered modal dialog / alert box with dark backdrop.
+    Centered modal dialog / alert box with dark backdrop (zero bounding box).
     """
     v_color = get_variant_color(variant)
     # Backdrop
-    lcd.fill_rect(10, 24, 108, 80, Theme.BG)
-    lcd.rect(10, 24, 108, 80, v_color)
+    lcd.fill_rect(10, 24, 108, 80, Theme.SURFACE)
+    lcd.hline(10, 24, 108, v_color)
+    lcd.hline(10, 103, 108, Theme.BORDER)
     
     # Title & Line
     draw_centered(lcd, title, 32, v_color, font="6x8")

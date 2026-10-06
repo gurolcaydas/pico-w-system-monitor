@@ -13,6 +13,7 @@
 - **No Key Map / Hint Text**: NEVER display button hints (`K3:NEXT`, `K2:SELECT`, `K1:MENU`, `Press K2...`, or footers) anywhere in the UI.
 - **Ultra-Minimalist Horizontal-Line Architecture (Zero Boxes)**:
   - **No Boxes / Enclosing Cards**: NEVER use bounding card boxes (`ui.card`, `lcd.rect`) across any screen in the UI.
+  - **Faded Pill Badges (Zero Border Boxes)**: Badges (`ui.badge`) render as borderless, subtle rounded pills with a soft, faded dark-tint background (`get_badge_colors`) and bright, high-contrast typography. NEVER draw hard bounding border boxes (`lcd.rect`) around badges (e.g. `dB` in Wi-Fi, `PORT 80`, `133MHz`, `PASS`).
   - **1px Horizontal Dividers**: Separate sections and rows using clean 1-pixel horizontal lines (`lcd.hline`) in `Theme.BORDER`.
   - **Main Menu**: 5-category list with horizontal lines separating each row (`DEV`, `PING`, `SITES`, `YT`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 23`, `row_h = 20`).
   - **Combined DEV Subsystem**: Like `SITES`, `DEV` features a dedicated Landing Page (View A) with selectable subpages (`CORE`, `NET`, `MEM`), where KEY2 enters the full detail view (View B) and KEY1 returns to the landing page.
@@ -99,7 +100,7 @@ Dear future AI agent, when you read or modify `picoui.py`, keep these crucial ar
 
 4. **Component Palette**:
    - `card(lcd, x, y, w, h, is_active=False, border_color=None)`: Elevated container with border.
-   - `badge(lcd, x, y, text, variant="info")`: Pill tag.
+   - `badge(lcd, x, y, text, variant="info", align_right=False)`: Borderless pill badge with faded tint background and bright high-contrast font. Zero boxes.
    - `progress_bar(lcd, x, y, w, h, percent, variant="primary")`: Bounded progress indicator.
    - `latency_chart(lcd, x, y, w, h, values, min_val=None, max_val=None)`: 16-bar response histogram with baseline axis and color-coded latency spikes.
    - `alert_modal(lcd, title, message, variant="info", prompt=None)`: Centered modal dialog.
