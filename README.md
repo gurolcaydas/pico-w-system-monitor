@@ -113,7 +113,25 @@ All interactions are strictly optimized for a 3-button navigation model:
 
 ---
 
-## 📺 6. YouTube Channel Tracker
+## ⚡ 6. Internet Connection & Quality Monitor (`PING`)
+
+- **3-Target Real-Time Diagnostics**:
+  - `CF` (Cloudflare `1.1.1.1` — Anycast DNS)
+  - `GOOG` (Google `8.8.8.8` — Global Backbone)
+  - `GW` (Local Router Gateway — Wi-Fi link health)
+- **Quality Grade System**: Borderless faded pill badges (`GREAT` <30ms, `GOOD` <60ms, `FAIR` <120ms, `POOR` >=120ms, `LOSS`).
+- **Real-Time Telemetry & Jitter**:
+  - Hero latency in bold digits + `JIT: Xms` (packet-to-packet jitter variance).
+  - Char-sized Min (`↓`) & Max (`↑`) arrows + Packet Loss rate (`LOSS X%`).
+  - **16-Bar Response Time Histogram Chart**: Live pulse telemetry automatically updating every 2.5s.
+- **Hardware Controls**:
+  - `KEY3`: Cycle targets (`CF` ↔ `GOOG` ↔ `GW`).
+  - `KEY2`: Send instant test probe.
+  - `KEY1`: Return to main menu.
+
+---
+
+## 📺 7. YouTube Channel Tracker
 
 - **API Integration**: Connects directly to Google's official YouTube Data API v3 (`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&...`) over hardware TLS (port 443) via MicroPython `ssl.wrap_socket`.
 - **Handle & Channel ID Support**: Automatically detects handles (`@yourchannel` or `yourchannel`) or Channel IDs (`UC...`).

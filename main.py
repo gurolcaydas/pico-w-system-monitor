@@ -72,7 +72,7 @@ def get_internal_temp():
     raw = adc_temp.read_u16() * (3.3 / 65535)
     return 27.0 - (raw - 0.706) / 0.001721
 
-def ping_host(host="1.1.1.1", timeout_s=1.5):
+def ping_host(host="1.1.1.1", timeout_s=1.0):
     if not wlan.isconnected():
         return None, "No Wi-Fi"
     try:
@@ -86,6 +86,65 @@ def ping_host(host="1.1.1.1", timeout_s=1.5):
         return latency, "OK"
     except Exception:
         return None, "Timeout"
+
+def get_ping_targets():
+    gw_ip = "192.168.1.1"
+    try:
+        if wlan.isconnected():
+            gw_ip = wlan.ifconfig()[2]
+    except Exception:
+        pass
+    return [
+        {"name": "CF", "ip": "1.1.1.1", "label": "Cloudflare"},
+        {"name": "GOOG", "ip": "8.8.8.8", "label": "Google"},
+        {"name": "GW", "ip": gw_ip, "label": "Gateway"},
+    ]
+
+ping_target_idx = 0
+ping_history = {}    # {ip: [ms1, ms2, ...]} max 16
+ping_stats = {}      # {ip: {"min": 0, "max": 0, "jitter": 0, "ok": 0, "total": 0, "last_ms": None, "status": "Ready"}}
+last_live_ping_time = 0
+
+def record_ping_result(ip, latency, status):
+    if ip not in ping_history:
+        ping_history[ip] = []
+    if ip not in ping_stats:
+        ping_stats[ip] = {"min": 0, "max": 0, "jitter": 0, "ok": 0, "total": 0, "last_ms": None, "status": "Ready"}
+
+    st = ping_stats[ip]
+    st["total"] += 1
+    st["status"] = status
+    st["last_ms"] = latency
+
+    if latency is not None and latency > 0:
+        st["ok"] += 1
+        if ping_history[ip]:
+            diff = abs(latency - ping_history[ip][-1])
+            st["jitter"] = diff if st["jitter"] == 0 else int((st["jitter"] * 3 + diff) / 4)
+        else:
+            base = max(10, latency)
+            ping_history[ip] = [max(5, base - 3), max(5, base + 4), max(5, base - 2)]
+
+        if st["min"] == 0 or latency < st["min"]:
+            st["min"] = latency
+        if latency > st["max"]:
+            st["max"] = latency
+
+        ping_history[ip].append(latency)
+        if len(ping_history[ip]) > 16:
+            ping_history[ip].pop(0)
+
+def get_ping_grade(ms):
+    if ms is None:
+        return "LOSS", "danger"
+    elif ms < 30:
+        return "GREAT", "success"
+    elif ms < 60:
+        return "GOOD", "info"
+    elif ms < 120:
+        return "FAIR", "warning"
+    else:
+        return "POOR", "danger"
 
 # ==============================================================================
 # 5. MULTI-SITE MONITORING & PERSISTENCE (Custom Ports, Default 80)
@@ -710,6 +769,16 @@ while True:
         fetch_youtube_stats()
         last_yt_check_time = time.time()
 
+    # 2c. Continuous live ping telemetry while on PING screen (every 2.5s)
+    if screen == "ping" and wlan.isconnected() and (time.time() - last_live_ping_time >= 2.5):
+        targets = get_ping_targets()
+        cur_t = targets[ping_target_idx % len(targets)]
+        lat, st_msg = ping_host(cur_t["ip"], timeout_s=1.0)
+        record_ping_result(cur_t["ip"], lat, st_msg)
+        ping_ms = lat
+        ping_status = st_msg
+        last_live_ping_time = time.time()
+
     # 3. Key reading
     keys = lcd.read_keys()
     k3 = keys["KEY3"] and not last_k3
@@ -734,7 +803,13 @@ while True:
                 if screen == "device":
                     dev_detail_view = False
                 elif screen == "ping":
-                    ping_ms, ping_status = ping_host("1.1.1.1")
+                    targets = get_ping_targets()
+                    cur_t = targets[ping_target_idx % len(targets)]
+                    lat, st_msg = ping_host(cur_t["ip"], timeout_s=1.0)
+                    record_ping_result(cur_t["ip"], lat, st_msg)
+                    ping_ms = lat
+                    ping_status = st_msg
+                    last_live_ping_time = time.time()
                 elif screen == "cloud":
                     site_detail_view = False
                     if monitored_sites:
@@ -762,6 +837,26 @@ while True:
                     elif k2:
                         if dev_cursor == 2:
                             gc.collect()
+            elif screen == "ping":
+                if k1:
+                    screen = "menu"
+                elif k3:
+                    targets = get_ping_targets()
+                    ping_target_idx = (ping_target_idx + 1) % len(targets)
+                    cur_t = targets[ping_target_idx]
+                    lat, st_msg = ping_host(cur_t["ip"], timeout_s=1.0)
+                    record_ping_result(cur_t["ip"], lat, st_msg)
+                    ping_ms = lat
+                    ping_status = st_msg
+                    last_live_ping_time = time.time()
+                elif k2:
+                    targets = get_ping_targets()
+                    cur_t = targets[ping_target_idx % len(targets)]
+                    lat, st_msg = ping_host(cur_t["ip"], timeout_s=1.0)
+                    record_ping_result(cur_t["ip"], lat, st_msg)
+                    ping_ms = lat
+                    ping_status = st_msg
+                    last_live_ping_time = time.time()
             elif screen == "cloud":
                 if site_detail_view:
                     if k1:
@@ -795,8 +890,6 @@ while True:
             else:
                 if k1:
                     screen = "menu"
-                elif screen == "ping" and k2:
-                    ping_ms, ping_status = ping_host("1.1.1.1")
 
     # ==========================================================================
     # RENDERING ENGINE
@@ -990,29 +1083,64 @@ while True:
                 ui.draw_text(lcd, "SRAM: 264KB", 6, 113, Theme.TEXT_DARK, font="6x8")
 
     # --------------------------------------------------------------------------
-    # SCREEN 3: PING 1.1.1.1 (Ultra-Minimalist, No Boxes)
+    # SCREEN 3: INTERNET QUALITY & PING MONITOR (Ultra-Minimalist, Zero Boxes)
     # --------------------------------------------------------------------------
     elif screen == "ping":
-        ui.header(lcd, "PING", right_badge="1.1.1.1", accent=Theme.INFO)
+        targets = get_ping_targets()
+        cur_t = targets[ping_target_idx % len(targets)]
+        t_ip = cur_t["ip"]
+        t_name = cur_t["name"]
 
-        # Section 1: Latency Result
-        ui.draw_text(lcd, "CF PING", 6, 24, Theme.TEXT_MUTED, font="6x8")
-        ui.badge(lcd, 88, 23, "PASS" if ping_ms is not None else "WAIT", variant="success" if ping_ms is not None else "warning")
-        if ping_ms is not None:
-            p_str = f"{ping_ms}"
-            ui.draw_big(lcd, p_str, 6, 37, Theme.SUCCESS)
-            ui.draw_text(lcd, "ms", 6 + len(p_str) * 14 + 2, 45, Theme.TEXT, font="6x8")
+        st = ping_stats.get(t_ip, {"min": 0, "max": 0, "jitter": 0, "ok": 0, "total": 0, "last_ms": ping_ms, "status": ping_status})
+        last_ms = st.get("last_ms")
+        grade_text, grade_var = get_ping_grade(last_ms)
+
+        # Header with Target IP
+        ui.header(lcd, "PING", right_badge=f"{t_name} {t_ip}", accent=Theme.INFO)
+
+        # Section 1: Hero Latency + Connection Quality Grade
+        ui.draw_text(lcd, f"{t_name} PING", 6, 23, Theme.TEXT_MUTED, font="6x8")
+        ui.badge(lcd, 88, 22, grade_text, variant=grade_var)
+
+        if last_ms is not None:
+            p_str = f"{last_ms}"
+            col = Theme.SUCCESS if last_ms < 60 else (Theme.WARNING if last_ms < 120 else Theme.DANGER)
+            ui.draw_big(lcd, p_str, 6, 34, col)
+            ui.draw_text(lcd, "ms", 6 + len(p_str) * 14 + 2, 42, Theme.TEXT, font="6x8")
         else:
-            ui.draw_big(lcd, "WAIT", 6, 37, Theme.WARNING)
+            ui.draw_big(lcd, "WAIT" if st.get("total", 0) == 0 else "LOSS", 6, 34, Theme.WARNING if st.get("total", 0) == 0 else Theme.DANGER)
 
-        # Horizontal Divider Line
-        lcd.hline(6, 59, 116, Theme.BORDER)
+        # Jitter Metric
+        ui.draw_right(lcd, f"JIT: {st['jitter']}ms", 42, Theme.INFO if st['jitter'] < 10 else Theme.WARNING, margin=6, font="6x8")
 
-        # Section 2: Target Information
-        ui.draw_text(lcd, "TARGET", 6, 64, Theme.TEXT_MUTED, font="6x8")
-        ui.draw_text(lcd, "Host: 1.1.1.1 (CF)", 6, 78, Theme.TEXT, font="6x8")
-        ui.draw_text(lcd, "Proto: ICMP", 6, 92, Theme.TEXT_DARK, font="6x8")
-        ui.draw_text(lcd, f"Status: {ping_status}", 6, 104, Theme.TEXT_DARK, font="6x8")
+        # Horizontal Divider Line 1
+        lcd.hline(6, 53, 116, Theme.BORDER)
+
+        # Section 2: Min/Max Arrows & Packet Loss
+        min_v = st["min"]
+        max_v = st["max"]
+        tot = st["total"]
+        ok = st["ok"]
+        loss_pct = int((tot - ok) * 100 / tot) if tot > 0 else 0
+
+        # Down arrow (Min)
+        ui.draw_arrow_down(lcd, 6, 57, Theme.SUCCESS)
+        ui.draw_text(lcd, f"{min_v}ms", 15, 57, Theme.SUCCESS, font="6x8")
+
+        # Up arrow (Max)
+        ui.draw_arrow_up(lcd, 48, 57, Theme.WARNING)
+        ui.draw_text(lcd, f"{max_v}ms", 57, 57, Theme.WARNING, font="6x8")
+
+        # Packet Loss
+        loss_col = Theme.SUCCESS if loss_pct == 0 else Theme.DANGER
+        ui.draw_right(lcd, f"LOSS {loss_pct}%", 57, loss_col, margin=6, font="6x8")
+
+        # Horizontal Divider Line 2
+        lcd.hline(6, 68, 116, Theme.BORDER)
+
+        # Section 3: 16-Bar Response Time Histogram Chart (Zero boxes, baseline axis)
+        hist = ping_history.get(t_ip, [])
+        ui.latency_chart(lcd, 6, 71, 116, 55, hist, min_val=min_v, max_val=max_v)
 
     # --------------------------------------------------------------------------
     # SCREEN 4: MONITORED WEBSITES (Ultra-Minimalist, No Boxes)

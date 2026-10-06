@@ -46,7 +46,23 @@
 - **Pruning**: Always prune with FIFO `pop(0)` or circular ring buffers when appending new samples. Unbounded list growth will fragment MicroPython heap and cause OOM crashes.
 - **Garbage Collection**: Run `gc.collect()` before and after heavy network operations (DNS lookup, HTTP socket reads, mbedTLS handshakes).
 
-## 4. Sites Monitor Architecture
+## 4. Internet Quality & Ping Architecture (`PING`)
+- **Multi-Target Diagnostic**: Cycles 3 critical network checkpoints:
+  - `CF` (Cloudflare `1.1.1.1` - Fast Anycast DNS)
+  - `GOOG` (Google `8.8.8.8` - Global Backbone)
+  - `GW` (Local Router Gateway via `wlan.ifconfig()[2]` - Wi-Fi Link Health)
+- **Quality Grade Badges**: Faded pill badges (`GREAT` <30ms, `GOOD` <60ms, `FAIR` <120ms, `POOR` >=120ms, `LOSS`).
+- **Telemetry Metrics**:
+  - Hero latency in big numbers + `JIT: Xms` (consecutive packet variance).
+  - Daily Min (`↓`) & Max (`↑`) arrows + Packet Loss percentage (`LOSS X%`).
+  - 16-bar response time histogram chart (`ui.latency_chart`) plotting live latency pulses.
+- **Controls & Live Telemetry**:
+  - `KEY3`: Cycle target (`CF` ↔ `GOOG` ↔ `GW`).
+  - `KEY2`: Instant re-probe.
+  - `KEY1`: Return to main menu.
+  - Auto-pings every 2.5s while active to continuously update the live chart.
+
+## 5. Sites Monitor Architecture
 - **View A (Overview)**: 2-column NOC list showing up to 16 websites simultaneously (8 rows × 2 columns), with vertical divider at `x = 63` and color-coded status dots (Green = UP, Red = DOWN, Yellow = WAIT).
 - **View B (Site Detail)**: Ultra-minimalist single-site view with **zero boxes/cards**:
   - Section 1: Single-line website URL + port, followed by hero status (`UP`/`DOWN`), latency, and HTTP code.
