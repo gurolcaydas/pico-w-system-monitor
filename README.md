@@ -4,6 +4,50 @@ A high-performance, minimalist MicroPython dashboard and embedded network monito
 
 ---
 
+## ⚡ Quick Start Guide (How-To for Forks & New Users)
+
+Getting up and running takes less than 3 minutes:
+
+### 1. Prerequisites
+- **Hardware**: Raspberry Pi Pico W + [Waveshare Pico-LCD-1.44](https://www.waveshare.com/pico-lcd-1.44.htm) attached to the GPIO header.
+- **MicroPython Firmware**: Flash official [MicroPython for Pico W](https://micropython.org/download/RPI_PICO_W/) (v1.20+) UF2 file if not already installed.
+- **PC Dependencies**: Python 3 with `pyserial`:
+  ```bash
+  pip install pyserial
+  ```
+
+### 2. Configure Credentials
+1. Copy the example credentials file:
+   ```bash
+   cp secrets.example.py secrets.py
+   ```
+2. Open `secrets.py` and enter your Wi-Fi network credentials:
+   ```python
+   WIFI_SSID = "Your_WiFi_Network"
+   WIFI_PASSWORD = "Your_WiFi_Password"
+   ```
+   *(Optional: You can also specify `YOUTUBE_API_KEY` and `YOUTUBE_CHANNEL_ID` here, or configure them later through the web browser).*
+
+### 3. Flash to the Pico W
+Plug the Pico W into your computer via USB, locate the serial port (e.g. `COM3` on Windows, `/dev/ttyACM0` on Linux/macOS), and deploy:
+```bash
+python upload_to_pico.py COM3
+```
+*(On Linux/macOS, use: `python upload_to_pico.py /dev/ttyACM0`)*
+
+The script automatically uploads all drivers, UI components, secrets, and applications directly to the Pico's internal flash storage and reboots it.
+
+### 4. Access the Web Dashboard
+1. On boot, the LCD splash screen and header display the Pico's assigned local IP address (e.g. `192.168.1.150`).
+2. Open `http://<pico_ip>/` in any browser on your Wi-Fi network.
+3. From the dashboard you can:
+   - Add and delete monitored website targets (with custom TCP ports like `80`, `443`, `8080`).
+   - Enter your YouTube channel handle and Google Data API key dynamically.
+   - Adjust screen backlight brightness slider.
+   - Push live custom alert modals to the LCD screen.
+
+---
+
 ## 📌 1. Hardware Baseline & Pinout
 
 | Subsystem | Specification | Hardware Details |

@@ -40,8 +40,19 @@ def upload_file(port, local_path, remote_path):
     print(f"Uploaded {local_path} -> {remote_path} ({len(content)} bytes)")
 
 if __name__ == "__main__":
-    port = "COM3"
-    files = ["lcd1in44.py", "ssd1306.py", "secrets.py", "picoui.py", "main.py", "yt_views.txt"]
+    port = sys.argv[1] if len(sys.argv) > 1 else "COM3"
+    
+    if not os.path.exists("secrets.py"):
+        print("ERROR: secrets.py not found!")
+        print("Please copy secrets.example.py to secrets.py and configure your Wi-Fi credentials:")
+        print("   cp secrets.example.py secrets.py")
+        sys.exit(1)
+
+    files = ["lcd1in44.py", "ssd1306.py", "secrets.py", "picoui.py", "main.py"]
+    if os.path.exists("yt_views.txt"):
+        files.append("yt_views.txt")
+
+    print(f"Connecting to Pico on {port}...")
     for fn in files:
         upload_file(port, fn, fn)
         time.sleep(0.1)
