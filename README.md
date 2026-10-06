@@ -198,7 +198,21 @@ All interactions are strictly optimized for a 3-button navigation model:
 
 ---
 
-## 🚀 7. Project Files & Deployment
+## ⛅ 8. Local Weather & Automatic IP Geolocation (`WX`)
+
+- **Zero-Config Auto-Detection**: When connected to Wi-Fi, the Pico automatically queries `http://ip-api.com/json` over plain HTTP (port 80) to resolve its current city name, latitude, and longitude based on public IP.
+- **Forecast Engine**: Queries `http://api.open-meteo.com/v1/forecast` over standard HTTP port 80 (zero API key, zero SSL RAM overhead).
+- **Telemetry Displayed**:
+  - Hero Temperature in big digits (`ui.draw_big`) + detected City name.
+  - Weather condition badge (`CLEAR`, `RAIN`, `CLOUDY`, `FOG`, `SNOW`, `STORM`).
+  - Relative Humidity (`HUM: XX%`) and Wind Speed (`WND: X.Xk`).
+  - Min (`↓`) & Max (`↑`) arrow icons + polling status (`SYNC 15m`).
+  - 16-bar temperature trend histogram chart with baseline axis.
+- **Web UI Integration**: Live weather card on `http://<pico_ip>/` with instant re-sync action.
+
+---
+
+## 🚀 9. Project Files & Deployment
 
 ```
 pico/

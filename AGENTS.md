@@ -15,9 +15,9 @@
   - **No Boxes / Enclosing Cards**: NEVER use bounding card boxes (`ui.card`, `lcd.rect`) across any screen in the UI.
   - **Faded Pill Badges (Zero Border Boxes)**: Badges (`ui.badge`) render as borderless, subtle rounded pills with a soft, faded dark-tint background (`get_badge_colors`) and bright, high-contrast typography. NEVER draw hard bounding border boxes (`lcd.rect`) around badges (e.g. `dB` in Wi-Fi, `PORT 80`, `133MHz`, `PASS`).
   - **1px Horizontal Dividers**: Separate sections and rows using clean 1-pixel horizontal lines (`lcd.hline`) in `Theme.BORDER`.
-  - **Main Menu**: 5-category list with horizontal lines separating each row (`DEV`, `PING`, `SITES`, `YT`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 23`, `row_h = 20`).
+  - **Main Menu**: 6-category list with horizontal lines separating each row (`DEV`, `PING`, `SITES`, `YT`, `WX`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 21`, `row_h = 17`).
   - **Combined DEV Subsystem**: Like `SITES`, `DEV` features a dedicated Landing Page (View A) with selectable subpages (`CORE`, `NET`, `MEM`), where KEY2 enters the full detail view (View B) and KEY1 returns to the landing page.
-  - **Detail Screens (DEV Subpages, Ping, Sites, YT, Web)**: Divided into clean sections by 1px horizontal lines on a unified dark canvas.
+  - **Detail Screens (DEV Subpages, Ping, Sites, YT, WX, Web)**: Divided into clean sections by 1px horizontal lines on a unified dark canvas.
   - **Progress Bars**: Sleek track lines without outer border boxes.
 - **Canvas Budget (128×128 px)**:
   - Header: `y = 0..18` (18 px).
@@ -39,6 +39,7 @@
     - `Protocol` -> `Proto` (e.g. `Proto: ICMP`)
     - `Cloudflare` -> `CF` (e.g. `CF PING`, `1.1.1.1 (CF)`)
     - `YouTube` -> `YT` (e.g. `YT` menu item, `SUBS`, `VIDS`, `VIEWS`)
+    - `Weather` -> `WX` (e.g. `WX` menu item, `HUM`, `WND`)
     - `Min / Max` -> Char-sized icons `↓` / `↑` (zero text labels)
 
 ## 3. Memory Management & Circular Buffer Rule
@@ -91,7 +92,19 @@
 - **Persistence**: Persistently stored in `youtube.txt` (channel + key) and `yt_views.txt` (bounded genuine view deltas).
 - **Web UI Management**: Live config form on port 80 (`http://<pico_ip>/`) to update channel handle/ID and API key on the fly without re-flashing.
 
-## 6. Web Server & Persistence
+## 6. Local Weather & IP Geolocation Architecture (`WX`)
+- **Auto-Detection**: Automatic IP Geolocation via `http://ip-api.com/json` over plain HTTP Port 80 (zero API key, zero SSL RAM overhead) detects current city, latitude, and longitude on boot.
+- **Forecast Engine**: Official `http://api.open-meteo.com/v1/forecast` queries real-time temperature, humidity, wind speed, and weather code.
+- **Query Frequency**: Automatically polls every 900 seconds (15 minutes) in the background. KEY2 triggers instant manual re-sync.
+- **Dedicated Screen (`WX`)**:
+  - Section 1: Hero temperature in big digits (`ui.draw_big`), condition pill badge (`CLEAR`, `RAIN`, `CLOUDY`, `FOG`, `SNOW`, `STORM`), and detected city.
+  - 1px horizontal line divider (`y = 54`).
+  - Section 2: Humidity (`HUM: XX%`), Wind (`WND: X.Xk`), Min (`↓`) & Max (`↑`) arrow icons, and `SYNC 15m`.
+  - 1px horizontal line divider (`y = 80`).
+  - Section 3: 16-bar temperature trend chart (`latency_chart`) plotting recent readings.
+- **Web UI Management**: Live weather card on port 80 displaying detected city, temperature, humidity, wind, and re-sync button.
+
+## 7. Web Server & Persistence
 - Non-blocking socket listener on Port 80 (`s.setblocking(False)`), integrated into the main loop without blocking UI rendering or button response.
 - Post/Redirect/Get pattern (HTTP 303 to `/`) for all POST/GET mutations.
 - Monitored sites persistently saved to `sites.txt` and YouTube config saved to `youtube.txt`.

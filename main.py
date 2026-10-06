@@ -497,6 +497,173 @@ if wlan.isconnected() and yt_channel_id and yt_api_key:
     fetch_youtube_stats()
 
 # ==============================================================================
+# 5.6 LOCAL WEATHER & IP GEOLOCATION (Open-Meteo, Port 80, Zero-Key)
+# ==============================================================================
+WX_FILE = "weather.txt"
+
+def load_wx_config():
+    try:
+        with open(WX_FILE, "r") as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+            if len(lines) >= 3:
+                return lines[0], float(lines[1]), float(lines[2]), True
+    except Exception:
+        pass
+    return "AUTO", 38.625, 34.714, False
+
+def save_wx_config(city, lat, lon):
+    try:
+        with open(WX_FILE, "w") as f:
+            f.write(city.strip() + "\n")
+            f.write(f"{lat:.4f}\n")
+            f.write(f"{lon:.4f}\n")
+    except Exception:
+        pass
+
+wx_override_city, wx_override_lat, wx_override_lon, wx_is_manual = load_wx_config()
+
+loc_data = {
+    "city": wx_override_city if wx_is_manual else "DETECTING",
+    "lat": wx_override_lat,
+    "lon": wx_override_lon,
+    "resolved": wx_is_manual,
+}
+
+weather_data = {
+    "temp": None,
+    "humidity": None,
+    "wind": None,
+    "code": 0,
+    "desc": "WAIT",
+    "history": [],  # Bounded to 16 samples
+    "min_t": None,
+    "max_t": None,
+    "status": "WAIT",
+    "last_sync": 0,
+}
+last_weather_check_time = 0
+
+def resolve_location():
+    global loc_data
+    if not wlan.isconnected() or wx_is_manual:
+        return loc_data["resolved"]
+    s = None
+    try:
+        host = "ip-api.com"
+        ai = socket.getaddrinfo(host, 80)[0][-1]
+        s = socket.socket()
+        s.settimeout(4.0)
+        s.connect(ai)
+        req = f"GET /json/?fields=status,city,lat,lon HTTP/1.0\r\nHost: {host}\r\nUser-Agent: PicoW\r\n\r\n"
+        s.send(req.encode())
+        data = b""
+        while True:
+            c = s.recv(512)
+            if not c:
+                break
+            data += c
+            if len(data) > 2048:
+                break
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) > 1:
+            res = json.loads(parts[1].decode('utf-8', 'ignore'))
+            if res.get("status") == "success":
+                raw_city = res.get("city", "UNKNOWN")
+                clean_city = raw_city.replace("İ", "I").replace("ı", "i").replace("ş", "s").replace("Ş", "S") \
+                                     .replace("ğ", "g").replace("Ğ", "G").replace("ü", "u").replace("Ü", "U") \
+                                     .replace("ö", "o").replace("Ö", "O").replace("ç", "c").replace("Ç", "C")
+                loc_data["city"] = clean_city[:12].upper()
+                loc_data["lat"] = float(res.get("lat", 38.625))
+                loc_data["lon"] = float(res.get("lon", 34.714))
+                loc_data["resolved"] = True
+                return True
+    except Exception:
+        pass
+    finally:
+        if s:
+            try:
+                s.close()
+            except:
+                pass
+        gc.collect()
+    return False
+
+def get_wx_desc(code):
+    if code == 0: return "CLEAR"
+    elif code in (1, 2): return "PARTLY"
+    elif code == 3: return "CLOUDY"
+    elif code in (45, 48): return "FOG"
+    elif code in (51, 53, 55, 61, 63, 65, 80, 81, 82): return "RAIN"
+    elif code in (71, 73, 75, 85, 86): return "SNOW"
+    elif code in (95, 96, 99): return "STORM"
+    return "FAIR"
+
+def fetch_weather():
+    global weather_data
+    if not wlan.isconnected():
+        weather_data["status"] = "NO-WIFI"
+        return False
+    if not loc_data["resolved"]:
+        resolve_location()
+    s = None
+    try:
+        lat = loc_data["lat"]
+        lon = loc_data["lon"]
+        host = "api.open-meteo.com"
+        path = f"/v1/forecast?latitude={lat:.4f}&longitude={lon:.4f}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code"
+        ai = socket.getaddrinfo(host, 80)[0][-1]
+        s = socket.socket()
+        s.settimeout(6.0)
+        s.connect(ai)
+        req = f"GET {path} HTTP/1.0\r\nHost: {host}\r\nUser-Agent: PicoW\r\n\r\n"
+        s.send(req.encode())
+        data = b""
+        while True:
+            c = s.recv(512)
+            if not c:
+                break
+            data += c
+            if len(data) > 3072:
+                break
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) > 1:
+            res = json.loads(parts[1].decode('utf-8', 'ignore'))
+            cur = res.get("current", {})
+            if "temperature_2m" in cur:
+                t = float(cur["temperature_2m"])
+                weather_data["temp"] = t
+                weather_data["humidity"] = int(cur.get("relative_humidity_2m", 0))
+                weather_data["wind"] = float(cur.get("wind_speed_10m", 0.0))
+                code = int(cur.get("weather_code", 0))
+                weather_data["code"] = code
+                weather_data["desc"] = get_wx_desc(code)
+                weather_data["last_sync"] = time.time()
+                weather_data["status"] = "OK"
+
+                if weather_data["min_t"] is None or t < weather_data["min_t"]:
+                    weather_data["min_t"] = t
+                if weather_data["max_t"] is None or t > weather_data["max_t"]:
+                    weather_data["max_t"] = t
+
+                weather_data["history"].append(int(round(t)))
+                if len(weather_data["history"]) > 16:
+                    weather_data["history"].pop(0)
+                return True
+    except Exception:
+        weather_data["status"] = "ERR"
+    finally:
+        if s:
+            try:
+                s.close()
+            except:
+                pass
+        gc.collect()
+    return False
+
+if wlan.isconnected():
+    fetch_weather()
+
+# ==============================================================================
 # 6. BUILT-IN WEB SERVER (Port 80, Non-Blocking)
 # ==============================================================================
 srv = None
@@ -554,6 +721,12 @@ def render_html(temp, free_kb, rssi, uptime_s):
         yt_badge = f'<span style="color:#fbbf24;font-weight:700">{yt_data.get("status", "WAIT")}</span>'
     yt_chan_disp = yt_channel_id if yt_channel_id else "Not set"
 
+    wx_city = loc_data["city"]
+    wx_desc = weather_data["desc"]
+    wx_t_str = f"{weather_data['temp']:.1f}&deg;C" if weather_data["temp"] is not None else "--"
+    wx_hum_str = f"{weather_data['humidity']}%" if weather_data["humidity"] is not None else "--"
+    wx_wnd_str = f"{weather_data['wind']:.1f} km/h" if weather_data["wind"] is not None else "--"
+
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -609,6 +782,19 @@ input{{flex:1;background:#0b0f19;border:1px solid #384253;border-radius:6px;colo
 <input type="text" name="yt_ch" value="{yt_channel_id}" placeholder="Channel ID (UC...) or @handle" maxlength="32" required>
 <input type="password" name="yt_key" value="{yt_api_key}" placeholder="YouTube Data API v3 Key" maxlength="50" required>
 <button type="submit" class="bsend" style="background:#f43f5e;width:100%">Save &amp; Fetch Stats</button>
+</form>
+</div>
+
+<div class="sec">Local Weather (Auto-Detected)</div>
+<div class="site-box" style="padding:10px 12px">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div><span style="font-size:13px;color:#fff;font-weight:600">{wx_city}</span> <span style="font-size:11px;color:#22d3ee;margin-left:6px;font-weight:700">{wx_desc}</span></div>
+<div style="font-size:16px;font-weight:700;color:#fbbf24">{wx_t_str}</div>
+</div>
+<div style="font-size:11px;color:#9ca3af;margin-top:6px">Humidity: <span style="color:#fff">{wx_hum_str}</span> &bull; Wind: <span style="color:#fff">{wx_wnd_str}</span></div>
+<form action="/" method="GET" style="margin-top:8px">
+<input type="hidden" name="wx_sync" value="1">
+<button type="submit" class="bsend" style="background:#0284c7;width:100%">Re-Sync Weather</button>
 </form>
 </div>
 
@@ -736,6 +922,10 @@ def poll_web_server():
                     fetch_youtube_stats()
             except Exception:
                 pass
+        elif "wx_sync=" in req:
+            is_action = True
+            if wlan.isconnected():
+                fetch_weather()
 
         if is_action:
             client.sendall(b"HTTP/1.1 303 See Other\r\nLocation: /\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
@@ -774,7 +964,7 @@ last_k3 = False
 last_k2 = False
 last_k1 = False
 
-screen_names = ["device", "ping", "cloud", "yt", "about"]
+screen_names = ["device", "ping", "cloud", "yt", "wx", "about"]
 
 dev_cursor = 0        # 0..2 ("CORE", "NET", "MEM")
 dev_detail_view = False
@@ -795,6 +985,11 @@ while True:
     if wlan.isconnected() and yt_channel_id and yt_api_key and (time.time() - last_yt_check_time > 600):
         fetch_youtube_stats()
         last_yt_check_time = time.time()
+
+    # 2d. Periodic background check of Weather (every 900s / 15m)
+    if wlan.isconnected() and (time.time() - last_weather_check_time > 900 or weather_data["status"] == "WAIT"):
+        fetch_weather()
+        last_weather_check_time = time.time()
 
     # 2c. Continuous live ping telemetry while on PING screen
     if screen == "ping" and wlan.isconnected() and (time.time() - last_live_ping_time >= 1.8):
@@ -828,7 +1023,7 @@ while True:
         web_alert_msg = None
         if screen == "menu":
             if k3:
-                menu_idx = (menu_idx + 1) % 5
+                menu_idx = (menu_idx + 1) % 6
             elif k2:
                 screen = screen_names[menu_idx]
                 if screen == "device":
@@ -852,6 +1047,9 @@ while True:
                 elif screen == "yt":
                     if yt_channel_id and yt_api_key and (yt_data["status"] != "OK" or time.time() - yt_data["last_sync"] > 300):
                         fetch_youtube_stats()
+                elif screen == "wx":
+                    if weather_data["status"] != "OK" or time.time() - weather_data["last_sync"] > 900:
+                        fetch_weather()
         else:
             if screen == "device":
                 if not dev_detail_view:
@@ -937,6 +1135,11 @@ while True:
                     screen = "menu"
                 elif k2:
                     fetch_youtube_stats()
+            elif screen == "wx":
+                if k1:
+                    screen = "menu"
+                elif k2:
+                    fetch_weather()
             else:
                 if k1:
                     screen = "menu"
@@ -970,6 +1173,13 @@ while True:
             yt_val = yt_data["status"]
             yt_col = Theme.WARNING
 
+        if weather_data["status"] == "OK" and weather_data["temp"] is not None:
+            wx_val = f"{weather_data['temp']:.1f}C"
+            wx_col = Theme.WARNING
+        else:
+            wx_val = weather_data["status"]
+            wx_col = Theme.TEXT_MUTED
+
         about_val = "PORT 80" if wlan.isconnected() else "PICO"
 
         menu_items = [
@@ -977,27 +1187,28 @@ while True:
             ("PING", ping_val, Theme.INFO),
             ("SITES", cloud_val, cloud_col),
             ("YT", yt_val, yt_col),
+            ("WX", wx_val, wx_col),
             ("WEB", about_val, Theme.TEXT_MUTED),
         ]
 
-        start_y = 23
-        row_h = 20
+        start_y = 21
+        row_h = 17
 
         for idx, (title, val, col) in enumerate(menu_items):
             cy = start_y + idx * row_h
             is_sel = (menu_idx == idx)
 
             if is_sel:
-                ui.draw_text(lcd, ">", 4, cy + 5, col, font="6x8")
-                ui.draw_text(lcd, title, 13, cy + 5, col, font="6x8")
-                ui.draw_right(lcd, val, cy + 5, Theme.TEXT, margin=6, font="6x8")
+                ui.draw_text(lcd, ">", 4, cy + 4, col, font="6x8")
+                ui.draw_text(lcd, title, 13, cy + 4, col, font="6x8")
+                ui.draw_right(lcd, val, cy + 4, Theme.TEXT, margin=6, font="6x8")
                 # Highlighted active divider line
-                lcd.hline(6, cy + 19, 116, col)
+                lcd.hline(6, cy + 16, 116, col)
             else:
-                ui.draw_text(lcd, title, 10, cy + 5, Theme.TEXT_MUTED, font="6x8")
-                ui.draw_right(lcd, val, cy + 5, Theme.TEXT_DARK, margin=6, font="6x8")
+                ui.draw_text(lcd, title, 10, cy + 4, Theme.TEXT_MUTED, font="6x8")
+                ui.draw_right(lcd, val, cy + 4, Theme.TEXT_DARK, margin=6, font="6x8")
                 # Subtle divider line
-                lcd.hline(6, cy + 19, 116, Theme.BORDER)
+                lcd.hline(6, cy + 16, 116, Theme.BORDER)
 
     # --------------------------------------------------------------------------
     # --------------------------------------------------------------------------
@@ -1408,6 +1619,64 @@ while True:
 
             # Section 3: Genuine View Deltas Histogram Bar Chart
             ui.latency_chart(lcd, 6, 83, 116, 43, yt_views_history, min_val=min_v, max_val=max_v)
+
+    # --------------------------------------------------------------------------
+    # SCREEN 4.6: LOCAL WEATHER (Open-Meteo & IP Geolocation, Ultra-Minimalist)
+    # --------------------------------------------------------------------------
+    elif screen == "wx":
+        ui.header(lcd, "WX", right_badge=loc_data["city"][:7], accent=Theme.WARNING)
+
+        if weather_data["status"] == "WAIT":
+            ui.draw_centered(lcd, "FETCHING WX...", 52, Theme.WARNING, font="6x8")
+            ui.draw_centered(lcd, loc_data["city"], 68, Theme.TEXT_MUTED, font="6x8")
+        elif weather_data["status"] in ("NO-WIFI", "ERR"):
+            ui.draw_centered(lcd, "WX UNAVAILABLE", 52, Theme.DANGER, font="6x8")
+            ui.draw_centered(lcd, weather_data["status"], 68, Theme.TEXT_MUTED, font="6x8")
+        else:
+            # Section 1: Hero Temp + Condition Badge + City
+            t_val = weather_data["temp"]
+            t_str = f"{t_val:.1f}" if t_val is not None else "--"
+            ui.draw_big(lcd, t_str, 6, 26, Theme.TEXT)
+            ui.draw_text(lcd, "C", 6 + len(t_str) * 14 + 1, 26, Theme.TEXT_MUTED, font="6x8")
+
+            # Condition badge (Faded borderless pill)
+            cond_str = weather_data["desc"]
+            c_variant = "warning"
+            if cond_str in ("RAIN", "STORM"): c_variant = "danger"
+            elif cond_str == "CLEAR": c_variant = "success"
+            elif cond_str in ("FOG", "SNOW"): c_variant = "info"
+            ui.badge(lcd, 122, 28, cond_str, variant=c_variant, align_right=True)
+
+            ui.draw_text(lcd, loc_data["city"][:18], 6, 44, Theme.TEXT_MUTED, font="6x8")
+
+            # Horizontal Divider Line 1
+            lcd.hline(6, 54, 116, Theme.BORDER)
+
+            # Section 2: Humidity, Wind & Min/Max
+            ui.draw_text(lcd, "HUM", 6, 58, Theme.TEXT_MUTED, font="6x8")
+            ui.draw_text(lcd, f"{weather_data['humidity']}%", 28, 58, Theme.INFO, font="6x8")
+
+            ui.draw_text(lcd, "WND", 60, 58, Theme.TEXT_MUTED, font="6x8")
+            ui.draw_text(lcd, f"{weather_data['wind']:.1f}k", 82, 58, Theme.PRIMARY, font="6x8")
+
+            # Min & Max arrows + Sync
+            min_t = int(round(weather_data["min_t"])) if weather_data["min_t"] is not None else 0
+            max_t = int(round(weather_data["max_t"])) if weather_data["max_t"] is not None else 0
+
+            ui.draw_arrow_down(lcd, 6, 69, Theme.SUCCESS)
+            ui.draw_text(lcd, f"{min_t}C", 15, 69, Theme.SUCCESS, font="6x8")
+
+            ui.draw_arrow_up(lcd, 48, 69, Theme.WARNING)
+            ui.draw_text(lcd, f"{max_t}C", 57, 69, Theme.WARNING, font="6x8")
+
+            ui.draw_right(lcd, "SYNC 15m", 69, Theme.TEXT_MUTED, margin=6, font="6x8")
+
+            # Horizontal Divider Line 2
+            lcd.hline(6, 80, 116, Theme.BORDER)
+
+            # Section 3: Temperature Trend Chart (16 bars)
+            chart_hist = weather_data["history"] if weather_data["history"] else [int(round(t_val))]
+            ui.latency_chart(lcd, 6, 83, 116, 43, chart_hist, min_val=min_t, max_val=max_t)
 
     # --------------------------------------------------------------------------
     # SCREEN 4: ABOUT / WEB INFO (Ultra-Minimalist, No Boxes)

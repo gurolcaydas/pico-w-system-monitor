@@ -3,6 +3,7 @@ secrets.py
 youtube.txt
 sites.txt
 yt_views.txt
+weather.txt
 
 # Python & Environment
 .venv/
