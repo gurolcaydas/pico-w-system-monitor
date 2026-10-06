@@ -678,8 +678,8 @@ def poll_web_server():
             pass
 
 # 7. App State
-screen = "menu"  # "menu", "device", "net", "ping", "cloud", "yt", "memory", "about"
-menu_idx = 0     # 0..6
+screen = "menu"  # "menu", "device", "ping", "cloud", "yt", "about"
+menu_idx = 0     # 0..4
 
 ping_ms = None
 ping_status = "Ready"
@@ -688,7 +688,10 @@ last_k3 = False
 last_k2 = False
 last_k1 = False
 
-screen_names = ["device", "net", "ping", "cloud", "yt", "memory", "about"]
+screen_names = ["device", "ping", "cloud", "yt", "about"]
+
+dev_cursor = 0        # 0..2 ("CORE", "NET", "MEM")
+dev_detail_view = False
 
 while True:
     # 1. Non-blocking web server poll
@@ -725,10 +728,12 @@ while True:
         web_alert_msg = None
         if screen == "menu":
             if k3:
-                menu_idx = (menu_idx + 1) % 7
+                menu_idx = (menu_idx + 1) % 5
             elif k2:
                 screen = screen_names[menu_idx]
-                if screen == "ping":
+                if screen == "device":
+                    dev_detail_view = False
+                elif screen == "ping":
                     ping_ms, ping_status = ping_host("1.1.1.1")
                 elif screen == "cloud":
                     site_detail_view = False
@@ -741,7 +746,23 @@ while True:
                     if yt_channel_id and yt_api_key and (yt_data["status"] != "OK" or time.time() - yt_data["last_sync"] > 300):
                         fetch_youtube_stats()
         else:
-            if screen == "cloud":
+            if screen == "device":
+                if not dev_detail_view:
+                    if k1:
+                        screen = "menu"
+                    elif k3:
+                        dev_cursor = (dev_cursor + 1) % 3
+                    elif k2:
+                        dev_detail_view = True
+                else:
+                    if k1:
+                        dev_detail_view = False
+                    elif k3:
+                        dev_cursor = (dev_cursor + 1) % 3
+                    elif k2:
+                        if dev_cursor == 2:
+                            gc.collect()
+            elif screen == "cloud":
                 if site_detail_view:
                     if k1:
                         site_detail_view = False
@@ -776,8 +797,6 @@ while True:
                     screen = "menu"
                 elif screen == "ping" and k2:
                     ping_ms, ping_status = ping_host("1.1.1.1")
-                elif screen == "memory" and k2:
-                    gc.collect()
 
     # ==========================================================================
     # RENDERING ENGINE
@@ -785,15 +804,12 @@ while True:
     lcd.fill(Theme.BG)
 
     # --------------------------------------------------------------------------
-    # --------------------------------------------------------------------------
-    # --------------------------------------------------------------------------
-    # SCREEN 0: MINIMALIST HORIZONTAL-LINE MENU
+    # SCREEN 0: MINIMALIST HORIZONTAL-LINE MENU (5 Core Categories)
     # --------------------------------------------------------------------------
     if screen == "menu":
         ui.header(lcd, "SYS MENU", right_badge="RP2040", accent=Theme.PRIMARY)
 
         temp_val = f"{get_internal_temp():.1f}C"
-        net_val = "ONLINE" if wlan.isconnected() else "OFFLINE"
         ping_val = f"{ping_ms}ms" if ping_ms is not None else "1.1.1.1"
 
         up_count = sum(1 for s in monitored_sites if site_results.get(s, {}).get("up") is True)
@@ -811,102 +827,167 @@ while True:
             yt_val = yt_data["status"]
             yt_col = Theme.WARNING
 
-        free_kb = gc.mem_free() // 1024
-        mem_val = f"{free_kb}KB"
         about_val = "PORT 80" if wlan.isconnected() else "PICO"
 
         menu_items = [
             ("DEV", temp_val, Theme.PRIMARY),
-            ("NET", net_val, Theme.SUCCESS if wlan.isconnected() else Theme.DANGER),
             ("PING", ping_val, Theme.INFO),
             ("SITES", cloud_val, cloud_col),
             ("YT", yt_val, yt_col),
-            ("MEM", mem_val, Theme.INFO),
             ("WEB", about_val, Theme.TEXT_MUTED),
         ]
 
-        start_y = 21
-        row_h = 15
+        start_y = 23
+        row_h = 20
 
         for idx, (title, val, col) in enumerate(menu_items):
             cy = start_y + idx * row_h
             is_sel = (menu_idx == idx)
 
             if is_sel:
-                ui.draw_text(lcd, ">", 4, cy + 3, col, font="6x8")
-                ui.draw_text(lcd, title, 13, cy + 3, col, font="6x8")
-                ui.draw_right(lcd, val, cy + 3, Theme.TEXT, margin=6, font="6x8")
+                ui.draw_text(lcd, ">", 4, cy + 5, col, font="6x8")
+                ui.draw_text(lcd, title, 13, cy + 5, col, font="6x8")
+                ui.draw_right(lcd, val, cy + 5, Theme.TEXT, margin=6, font="6x8")
                 # Highlighted active divider line
-                lcd.hline(6, cy + 14, 116, col)
+                lcd.hline(6, cy + 19, 116, col)
             else:
-                ui.draw_text(lcd, title, 10, cy + 3, Theme.TEXT_MUTED, font="6x8")
-                ui.draw_right(lcd, val, cy + 3, Theme.TEXT_DARK, margin=6, font="6x8")
+                ui.draw_text(lcd, title, 10, cy + 5, Theme.TEXT_MUTED, font="6x8")
+                ui.draw_right(lcd, val, cy + 5, Theme.TEXT_DARK, margin=6, font="6x8")
                 # Subtle divider line
-                lcd.hline(6, cy + 14, 116, Theme.BORDER)
+                lcd.hline(6, cy + 19, 116, Theme.BORDER)
 
     # --------------------------------------------------------------------------
-    # SCREEN 1: DEVICE (Ultra-Minimalist, No Boxes)
+    # --------------------------------------------------------------------------
+    # SCREEN 1: DEVICE (Combined Landing Page + CORE / NET / MEM Subpages)
     # --------------------------------------------------------------------------
     elif screen == "device":
-        ui.header(lcd, "DEV", right_badge="RP2040", accent=Theme.PRIMARY)
+        if not dev_detail_view:
+            # ==================================================================
+            # VIEW A: DEV LANDING PAGE (Selectable Subpages: CORE, NET, MEM)
+            # ==================================================================
+            ui.header(lcd, "DEV", right_badge="SYS", accent=Theme.PRIMARY)
 
-        # Section 1: Core Tmp
-        ui.draw_text(lcd, "CORE TMP", 6, 24, Theme.TEXT_MUTED, font="6x8")
-        ui.badge(lcd, 88, 23, "133MHz", variant="primary")
-        temp = get_internal_temp()
-        t_str = f"{temp:.1f}"
-        ui.draw_big(lcd, t_str, 6, 37, Theme.PRIMARY)
-        ui.draw_text(lcd, "C", 6 + len(t_str) * 14 + 2, 45, Theme.TEXT, font="6x8")
+            temp = get_internal_temp()
+            is_conn = wlan.isconnected()
+            free_kb = gc.mem_free() // 1024
+            alloc_kb = gc.mem_alloc() // 1024
+            used_pct = int(alloc_kb * 100 / (free_kb + alloc_kb)) if (free_kb + alloc_kb) > 0 else 0
+            ip_str = wlan.ifconfig()[0] if is_conn else "No Wi-Fi"
 
-        # Horizontal Divider Line
-        lcd.hline(6, 59, 116, Theme.BORDER)
+            dev_sub_items = [
+                ("CORE", f"{temp:.1f}C", "RP2040 133MHz", Theme.PRIMARY),
+                ("NET", "ONLINE" if is_conn else "OFFLINE", ip_str, Theme.SUCCESS if is_conn else Theme.DANGER),
+                ("MEM", f"{free_kb}KB", f"Alloc: {alloc_kb}KB ({used_pct}%)", Theme.INFO),
+            ]
 
-        # Section 2: Free RAM
-        free_kb = gc.mem_free() // 1024
-        alloc_kb = gc.mem_alloc() // 1024
-        used_pct = int(alloc_kb * 100 / (free_kb + alloc_kb))
+            start_y = 23
+            row_h = 34
 
-        ui.draw_text(lcd, "FREE RAM", 6, 64, Theme.TEXT_MUTED, font="6x8")
-        ui.badge(lcd, 88, 63, f"{used_pct}%", variant="info")
-        f_str = f"{free_kb}"
-        ui.draw_big(lcd, f_str, 6, 77, Theme.INFO)
-        ui.draw_text(lcd, "KB", 6 + len(f_str) * 14 + 2, 85, Theme.TEXT, font="6x8")
-        ui.progress_bar(lcd, 6, 101, 116, 4, percent=used_pct, variant="info")
-        ui.draw_text(lcd, f"Alloc: {alloc_kb}KB", 6, 111, Theme.TEXT_DARK, font="6x8")
+            for idx, (title, val, sub, col) in enumerate(dev_sub_items):
+                cy = start_y + idx * row_h
+                is_sel = (dev_cursor == idx)
 
-    # --------------------------------------------------------------------------
-    # SCREEN 2: NETWORK (Ultra-Minimalist, No Boxes)
-    # --------------------------------------------------------------------------
-    elif screen == "net":
-        is_conn = wlan.isconnected()
-        ui.header(lcd, "NET", right_badge="ONLINE" if is_conn else "OFFLINE", accent=Theme.INFO)
+                if is_sel:
+                    ui.draw_text(lcd, ">", 4, cy + 4, col, font="6x8")
+                    ui.draw_text(lcd, title, 13, cy + 4, col, font="6x8")
+                    ui.draw_right(lcd, val, cy + 4, Theme.TEXT, margin=6, font="6x8")
+                    ui.draw_text(lcd, sub, 13, cy + 16, Theme.TEXT_MUTED, font="6x8")
+                    lcd.hline(6, cy + 30, 116, col)
+                else:
+                    ui.draw_text(lcd, title, 10, cy + 4, Theme.TEXT_MUTED, font="6x8")
+                    ui.draw_right(lcd, val, cy + 4, Theme.TEXT_DARK, margin=6, font="6x8")
+                    ui.draw_text(lcd, sub, 10, cy + 16, Theme.TEXT_DARK, font="6x8")
+                    lcd.hline(6, cy + 30, 116, Theme.BORDER)
 
-        # Section 1: Wi-Fi Status
-        ui.draw_text(lcd, "WIFI", 6, 24, Theme.TEXT_MUTED, font="6x8")
-        try:
-            rssi = wlan.status('rssi')
-        except Exception:
-            rssi = -54
-        ui.badge(lcd, 88, 23, f"{rssi}dB", variant="success" if is_conn else "danger")
-        if is_conn:
-            ip = wlan.ifconfig()[0]
-            ui.draw_text(lcd, ip, 6, 38, Theme.TEXT, font="6x8")
-            ui.draw_text(lcd, f"SSID: {WIFI_SSID[:14]}", 6, 48, Theme.TEXT_DARK, font="6x8")
         else:
-            ui.draw_text(lcd, "Conn...", 6, 40, Theme.WARNING, font="6x8")
+            # ==================================================================
+            # VIEW B: SUBPAGE DETAIL (CORE, NET, MEM)
+            # ==================================================================
+            if dev_cursor == 0:
+                # --------------------------------------------------------------
+                # SUBPAGE 0: CORE (CPU / Temperature / Hardware)
+                # --------------------------------------------------------------
+                ui.header(lcd, "CORE TMP", right_badge="133MHz", accent=Theme.PRIMARY)
 
-        # Horizontal Divider Line
-        lcd.hline(6, 59, 116, Theme.BORDER)
+                # Section 1: Core Tmp
+                ui.draw_text(lcd, "CORE TMP", 6, 24, Theme.TEXT_MUTED, font="6x8")
+                ui.badge(lcd, 88, 23, "133MHz", variant="primary")
+                temp = get_internal_temp()
+                t_str = f"{temp:.1f}"
+                ui.draw_big(lcd, t_str, 6, 37, Theme.PRIMARY)
+                ui.draw_text(lcd, "C", 6 + len(t_str) * 14 + 2, 45, Theme.TEXT, font="6x8")
 
-        # Section 2: Local Web Srv
-        ui.draw_text(lcd, "WEB SRV", 6, 64, Theme.TEXT_MUTED, font="6x8")
-        ui.badge(lcd, 88, 63, "PORT 80", variant="success" if is_conn else "danger")
-        if is_conn:
-            ui.draw_text(lcd, f"http://{wlan.ifconfig()[0]}", 6, 78, Theme.INFO, font="6x8")
-            ui.draw_text(lcd, "Socket: Non-block (80)", 6, 92, Theme.TEXT_DARK, font="6x8")
-            ui.draw_text(lcd, "Flash: sites.txt", 6, 104, Theme.TEXT_DARK, font="6x8")
-        else:
-            ui.draw_text(lcd, "Server offline", 6, 82, Theme.TEXT_MUTED, font="6x8")
+                # Horizontal Divider Line 1
+                lcd.hline(6, 59, 116, Theme.BORDER)
+
+                # Section 2: Chip & Uptime
+                ui.draw_text(lcd, "HARDWARE", 6, 64, Theme.TEXT_MUTED, font="6x8")
+                ui.draw_text(lcd, "Chip: RP2040 Dual-Core", 6, 78, Theme.TEXT, font="6x8")
+                ui.draw_text(lcd, f"Freq: {machine.freq() // 1000000}MHz", 6, 91, Theme.INFO, font="6x8")
+                uptime_s = int(time.time() - boot_time)
+                ui.draw_text(lcd, f"Uptime: {uptime_s}s", 6, 104, Theme.TEXT_DARK, font="6x8")
+
+            elif dev_cursor == 1:
+                # --------------------------------------------------------------
+                # SUBPAGE 1: NETWORK (Wi-Fi / Sockets / IP)
+                # --------------------------------------------------------------
+                is_conn = wlan.isconnected()
+                ui.header(lcd, "NET", right_badge="ONLINE" if is_conn else "OFFLINE", accent=Theme.INFO)
+
+                # Section 1: Wi-Fi Status
+                ui.draw_text(lcd, "WIFI", 6, 24, Theme.TEXT_MUTED, font="6x8")
+                try:
+                    rssi = wlan.status('rssi')
+                except Exception:
+                    rssi = -54
+                ui.badge(lcd, 88, 23, f"{rssi}dB", variant="success" if is_conn else "danger")
+                if is_conn:
+                    ip = wlan.ifconfig()[0]
+                    ui.draw_text(lcd, ip, 6, 38, Theme.TEXT, font="6x8")
+                    ui.draw_text(lcd, f"SSID: {WIFI_SSID[:14]}", 6, 48, Theme.TEXT_DARK, font="6x8")
+                else:
+                    ui.draw_text(lcd, "Conn...", 6, 40, Theme.WARNING, font="6x8")
+
+                # Horizontal Divider Line 1
+                lcd.hline(6, 59, 116, Theme.BORDER)
+
+                # Section 2: Local Web Srv
+                ui.draw_text(lcd, "WEB SRV", 6, 64, Theme.TEXT_MUTED, font="6x8")
+                ui.badge(lcd, 88, 63, "PORT 80", variant="success" if is_conn else "danger")
+                if is_conn:
+                    ui.draw_text(lcd, f"http://{wlan.ifconfig()[0]}", 6, 78, Theme.INFO, font="6x8")
+                    ui.draw_text(lcd, "Socket: Non-block (80)", 6, 92, Theme.TEXT_DARK, font="6x8")
+                    ui.draw_text(lcd, "Flash: sites.txt", 6, 104, Theme.TEXT_DARK, font="6x8")
+                else:
+                    ui.draw_text(lcd, "Server offline", 6, 82, Theme.TEXT_MUTED, font="6x8")
+
+            elif dev_cursor == 2:
+                # --------------------------------------------------------------
+                # SUBPAGE 2: MEMORY (RAM Allocation / GC)
+                # --------------------------------------------------------------
+                ui.header(lcd, "MEM", right_badge="RAM", accent=Theme.INFO)
+
+                # Section 1: Free Heap
+                free_kb = gc.mem_free() // 1024
+                alloc_kb = gc.mem_alloc() // 1024
+                total_kb = free_kb + alloc_kb
+                used_pct = int(alloc_kb * 100 / total_kb) if total_kb > 0 else 0
+
+                ui.draw_text(lcd, "FREE RAM", 6, 24, Theme.TEXT_MUTED, font="6x8")
+                ui.badge(lcd, 88, 23, f"{used_pct}%", variant="info")
+                f_str = f"{free_kb}"
+                ui.draw_big(lcd, f_str, 6, 37, Theme.INFO)
+                ui.draw_text(lcd, "KB", 6 + len(f_str) * 14 + 2, 45, Theme.TEXT, font="6x8")
+
+                # Horizontal Divider Line 1
+                lcd.hline(6, 59, 116, Theme.BORDER)
+
+                # Section 2: Memory Allocation
+                ui.draw_text(lcd, "ALLOC RAM", 6, 64, Theme.TEXT_MUTED, font="6x8")
+                ui.draw_text(lcd, f"Alloc: {alloc_kb}KB", 6, 78, Theme.TEXT, font="6x8")
+                ui.progress_bar(lcd, 6, 91, 116, 4, percent=used_pct, variant="info")
+                ui.draw_text(lcd, f"Total: {total_kb}KB", 6, 102, Theme.TEXT_DARK, font="6x8")
+                ui.draw_text(lcd, "SRAM: 264KB", 6, 113, Theme.TEXT_DARK, font="6x8")
 
     # --------------------------------------------------------------------------
     # SCREEN 3: PING 1.1.1.1 (Ultra-Minimalist, No Boxes)
@@ -1097,35 +1178,7 @@ while True:
             ui.latency_chart(lcd, 6, 83, 116, 43, yt_views_history, min_val=min_v, max_val=max_v)
 
     # --------------------------------------------------------------------------
-    # SCREEN 5: MEMORY (Ultra-Minimalist, No Boxes)
-    # --------------------------------------------------------------------------
-    elif screen == "memory":
-        ui.header(lcd, "MEM", right_badge="RAM", accent=Theme.INFO)
-
-        # Section 1: Free Heap
-        free_kb = gc.mem_free() // 1024
-        alloc_kb = gc.mem_alloc() // 1024
-        total_kb = free_kb + alloc_kb
-        used_pct = int(alloc_kb * 100 / total_kb) if total_kb > 0 else 0
-
-        ui.draw_text(lcd, "FREE RAM", 6, 24, Theme.TEXT_MUTED, font="6x8")
-        ui.badge(lcd, 88, 23, f"{used_pct}%", variant="info")
-        f_str = f"{free_kb}"
-        ui.draw_big(lcd, f_str, 6, 37, Theme.INFO)
-        ui.draw_text(lcd, "KB", 6 + len(f_str) * 14 + 2, 45, Theme.TEXT, font="6x8")
-
-        # Horizontal Divider Line
-        lcd.hline(6, 59, 116, Theme.BORDER)
-
-        # Section 2: Memory Allocation
-        ui.draw_text(lcd, "ALLOC RAM", 6, 64, Theme.TEXT_MUTED, font="6x8")
-        ui.draw_text(lcd, f"Alloc: {alloc_kb}KB", 6, 78, Theme.TEXT, font="6x8")
-        ui.progress_bar(lcd, 6, 91, 116, 4, percent=used_pct, variant="info")
-        ui.draw_text(lcd, f"Total: {total_kb}KB", 6, 102, Theme.TEXT_DARK, font="6x8")
-        ui.draw_text(lcd, "SRAM: 264KB", 6, 113, Theme.TEXT_DARK, font="6x8")
-
-    # --------------------------------------------------------------------------
-    # SCREEN 6: ABOUT / WEB INFO (Ultra-Minimalist, No Boxes)
+    # SCREEN 4: ABOUT / WEB INFO (Ultra-Minimalist, No Boxes)
     # --------------------------------------------------------------------------
     elif screen == "about":
         ui.header(lcd, "WEB", right_badge="HTTP", accent=Theme.PRIMARY)

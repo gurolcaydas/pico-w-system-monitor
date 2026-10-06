@@ -14,8 +14,9 @@
 - **Ultra-Minimalist Horizontal-Line Architecture (Zero Boxes)**:
   - **No Boxes / Enclosing Cards**: NEVER use bounding card boxes (`ui.card`, `lcd.rect`) across any screen in the UI.
   - **1px Horizontal Dividers**: Separate sections and rows using clean 1-pixel horizontal lines (`lcd.hline`) in `Theme.BORDER`.
-  - **Main Menu**: 7-item list with horizontal lines separating each row (`DEV`, `NET`, `PING`, `SITES`, `YT`, `MEM`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 21`, `row_h = 15`).
-  - **Detail Screens (Device, Net, Ping, Sites, YT, Memory, Web)**: Divided into clean sections by 1px horizontal lines on a unified dark canvas.
+  - **Main Menu**: 5-category list with horizontal lines separating each row (`DEV`, `PING`, `SITES`, `YT`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 23`, `row_h = 20`).
+  - **Combined DEV Subsystem**: Like `SITES`, `DEV` features a dedicated Landing Page (View A) with selectable subpages (`CORE`, `NET`, `MEM`), where KEY2 enters the full detail view (View B) and KEY1 returns to the landing page.
+  - **Detail Screens (DEV Subpages, Ping, Sites, YT, Web)**: Divided into clean sections by 1px horizontal lines on a unified dark canvas.
   - **Progress Bars**: Sleek track lines without outer border boxes.
 - **Canvas Budget (128×128 px)**:
   - Header: `y = 0..18` (18 px).
