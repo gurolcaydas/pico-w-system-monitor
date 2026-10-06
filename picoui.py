@@ -450,6 +450,52 @@ def draw_forecast_line_chart(lcd, x, y, w, h, temps, hours):
                 lbl_color = Theme.INFO if idx == 0 else Theme.TEXT_MUTED
                 draw_text(lcd, lbl, lx, label_y, lbl_color, font="6x8")
 
+def draw_moon_disk(lcd, cx: int, cy: int, r: int, phase: float):
+    """
+    Renders realistic lunar phase disk with accurate terminator curve.
+    cx, cy: Center coordinates
+    r: Radius in pixels
+    phase: 0.0 (New Moon) .. 0.5 (Full Moon) .. 1.0 (New Moon)
+    """
+    import math
+    c_dark = Theme.SURFACE_ALT
+    c_border = Theme.BORDER
+    c_lit = Theme.TEXT
+
+    cos_t = math.cos(2.0 * math.pi * phase)
+    r2 = r * r
+
+    for dy in range(-r, r + 1):
+        dy2 = dy * dy
+        if dy2 > r2:
+            continue
+        w = int(math.sqrt(r2 - dy2))
+        y = cy + dy
+        if w <= 0:
+            lcd.pixel(cx, y, c_border)
+            continue
+
+        x_term = int(round(w * cos_t))
+
+        # Dark silhouette baseline
+        lcd.hline(cx - w, y, 2 * w + 1, c_dark)
+        lcd.pixel(cx - w, y, c_border)
+        lcd.pixel(cx + w, y, c_border)
+
+        # Lit area
+        if phase <= 0.5:
+            # Waxing: lit on the right side from x_term to +w
+            x_start = max(-w, min(w, x_term))
+            lit_w = w - x_start + 1
+            if lit_w > 0:
+                lcd.hline(cx + x_start, y, lit_w, c_lit)
+        else:
+            # Waning: lit on the left side from -w to x_term
+            x_end = max(-w, min(w, x_term))
+            lit_w = x_end - (-w) + 1
+            if lit_w > 0:
+                lcd.hline(cx - w, y, lit_w, c_lit)
+
 def metric_widget(lcd, x, y, w, h, label, value_str, unit="", variant="primary", is_active=False):
     """
     Hero Metric Card (e.g. Temperature 24.5 C or CPU 12%).

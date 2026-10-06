@@ -278,6 +278,7 @@ if wlan.isconnected() and monitored_sites:
 # ==============================================================================
 import weather
 import youtube_service as yt_svc
+import moon
 
 # Alias shared structures and helpers
 yt_data = yt_svc.yt_data
@@ -600,7 +601,7 @@ last_k3 = False
 last_k2 = False
 last_k1 = False
 
-screen_names = ["device", "ping", "cloud", "yt", "wx", "about"]
+screen_names = ["device", "ping", "cloud", "yt", "wx", "moon", "about"]
 
 dev_cursor = 0        # 0..2 ("CORE", "NET", "MEM")
 dev_detail_view = False
@@ -659,7 +660,7 @@ while True:
         web_alert_msg = None
         if screen == "menu":
             if k3:
-                menu_idx = (menu_idx + 1) % 6
+                menu_idx = (menu_idx + 1) % len(screen_names)
             elif k2:
                 screen = screen_names[menu_idx]
                 if screen == "device":
@@ -816,6 +817,9 @@ while True:
             wx_val = weather_data["status"]
             wx_col = Theme.TEXT_MUTED
 
+        m_info = moon.get_moon_info()
+        moon_val = f"FULL {int(round(m_info['days_to_full']))}d"
+
         about_val = "PORT 80" if wlan.isconnected() else "PICO"
 
         menu_items = [
@@ -824,27 +828,28 @@ while True:
             ("SITES", cloud_val, cloud_col),
             ("YT", yt_val, yt_col),
             ("WX", wx_val, wx_col),
+            ("MOON", moon_val, Theme.INFO),
             ("WEB", about_val, Theme.TEXT_MUTED),
         ]
 
-        start_y = 21
-        row_h = 17
+        start_y = 20
+        row_h = 15
 
         for idx, (title, val, col) in enumerate(menu_items):
             cy = start_y + idx * row_h
             is_sel = (menu_idx == idx)
 
             if is_sel:
-                ui.draw_text(lcd, ">", 4, cy + 4, col, font="6x8")
-                ui.draw_text(lcd, title, 13, cy + 4, col, font="6x8")
-                ui.draw_right(lcd, val, cy + 4, Theme.TEXT, margin=6, font="6x8")
+                ui.draw_text(lcd, ">", 4, cy + 3, col, font="6x8")
+                ui.draw_text(lcd, title, 13, cy + 3, col, font="6x8")
+                ui.draw_right(lcd, val, cy + 3, Theme.TEXT, margin=6, font="6x8")
                 # Highlighted active divider line
-                lcd.hline(6, cy + 16, 116, col)
+                lcd.hline(6, cy + 14, 116, col)
             else:
-                ui.draw_text(lcd, title, 10, cy + 4, Theme.TEXT_MUTED, font="6x8")
-                ui.draw_right(lcd, val, cy + 4, Theme.TEXT_DARK, margin=6, font="6x8")
+                ui.draw_text(lcd, title, 10, cy + 3, Theme.TEXT_MUTED, font="6x8")
+                ui.draw_right(lcd, val, cy + 3, Theme.TEXT_DARK, margin=6, font="6x8")
                 # Subtle divider line
-                lcd.hline(6, cy + 16, 116, Theme.BORDER)
+                lcd.hline(6, cy + 14, 116, Theme.BORDER)
 
     # --------------------------------------------------------------------------
     # --------------------------------------------------------------------------
@@ -1305,6 +1310,49 @@ while True:
 
             # Section 3: 12-Hour Forward Temperature Forecast Line Chart
             ui.draw_forecast_line_chart(lcd, 6, 70, 116, 57, weather_data.get("hourly_temps", []), weather_data.get("hourly_hours", []))
+
+    # --------------------------------------------------------------------------
+    # SCREEN 4.7: MOON PHASES & FULL MOON COUNTDOWN (Ultra-Minimalist)
+    # --------------------------------------------------------------------------
+    elif screen == "moon":
+        m_info = moon.get_moon_info()
+        ui.header(lcd, "MOON", right_badge=f"{m_info['illum']:.0f}%", accent=Theme.INFO)
+
+        # Section 1: Hero Moon Disk + Illumination & Age + Phase Name
+        ui.draw_moon_disk(lcd, 64, 40, 15, m_info["phase"])
+
+        # Illumination on Left
+        ui.draw_text(lcd, "ILLUM", 6, 31, Theme.TEXT_MUTED, font="6x8")
+        ui.draw_text(lcd, f"{m_info['illum']:.0f}%", 6, 41, Theme.INFO, font="6x8")
+
+        # Lunar Age on Right
+        ui.draw_right(lcd, "AGE", 31, Theme.TEXT_MUTED, margin=6, font="6x8")
+        ui.draw_right(lcd, f"{m_info['age']:.1f}d", 41, Theme.WARNING, margin=6, font="6x8")
+
+        # Official Phase Name
+        ui.draw_centered(lcd, m_info["name"], 59, Theme.TEXT, font="6x8")
+
+        # Divider 1
+        lcd.hline(6, 69, 116, Theme.BORDER)
+
+        # Section 2: Next Full Moon Countdown
+        ui.draw_text(lcd, "NEXT FULL MOON", 6, 73, Theme.TEXT_MUTED, font="6x8")
+        d_val = f"{m_info['days_to_full']:.0f}"
+        ui.draw_big(lcd, d_val, 6, 84, Theme.WARNING)
+        d_x = 6 + len(d_val) * 14 + 3
+        ui.draw_text(lcd, "DAYS", d_x, 88, Theme.TEXT, font="6x8")
+
+        ui.draw_right(lcd, f"IN {m_info['days_to_full']:.1f}d", 84, Theme.TEXT_MUTED, margin=6, font="6x8")
+        ui.draw_right(lcd, m_info["full_date"], 95, Theme.SUCCESS, margin=6, font="6x8")
+
+        # Divider 2
+        lcd.hline(6, 106, 116, Theme.BORDER)
+
+        # Section 3: Synodic Cycle Progress Track
+        ui.progress_bar(lcd, 6, 110, 116, 4, int(m_info["phase"] * 100), variant="primary")
+        ui.draw_text(lcd, "NEW", 6, 118, Theme.TEXT_DARK, font="6x8")
+        ui.draw_centered(lcd, "FULL", 118, Theme.WARNING, font="6x8")
+        ui.draw_right(lcd, "NEW", 118, Theme.TEXT_DARK, margin=6, font="6x8")
 
     # --------------------------------------------------------------------------
     # SCREEN 4: ABOUT / WEB INFO (Ultra-Minimalist, No Boxes)

@@ -146,6 +146,17 @@ def fetch_weather(wlan_connected):
                 weather_data["last_sync"] = time.time()
                 weather_data["status"] = "OK"
 
+                if "time" in cur:
+                    try:
+                        import machine
+                        ts = str(cur["time"])
+                        d_p, t_p = ts.split("T")
+                        yr, mn, dy = [int(v) for v in d_p.split("-")]
+                        hr, mi = [int(v) for v in t_p.split(":")]
+                        machine.RTC().datetime((yr, mn, dy, 0, hr, mi, 0, 0))
+                    except Exception:
+                        pass
+
                 if weather_data["min_t"] is None or t < weather_data["min_t"]:
                     weather_data["min_t"] = t
                 if weather_data["max_t"] is None or t > weather_data["max_t"]:
