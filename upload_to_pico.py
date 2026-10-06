@@ -41,7 +41,7 @@ def upload_file(port, local_path, remote_path):
 
 if __name__ == "__main__":
     port = "COM3"
-    files = ["lcd1in44.py", "ssd1306.py", "secrets.py", "picoui.py", "main.py"]
+    files = ["lcd1in44.py", "ssd1306.py", "secrets.py", "picoui.py", "main.py", "yt_views.txt"]
     for fn in files:
         upload_file(port, fn, fn)
         time.sleep(0.1)

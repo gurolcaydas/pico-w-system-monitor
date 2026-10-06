@@ -359,24 +359,25 @@ def save_yt_views(hist, last_v, last_t):
         pass
 
 yt_views_history, yt_last_views, yt_last_views_time = load_yt_views()
+yt_initial_views = 0
 
 def record_yt_views_sample(cur_views):
-    global yt_views_history, yt_last_views, yt_last_views_time
+    global yt_views_history, yt_last_views, yt_last_views_time, yt_initial_views
     now = time.time()
     if cur_views <= 0:
         return
 
-    # If first time ever with no history, generate a realistic 48h baseline curve
-    if not yt_views_history:
-        base = max(10, min(80, int(cur_views / 10000)))
-        factors = [0.7, 0.5, 0.4, 0.6, 0.9, 1.2, 1.4, 1.3, 1.1, 0.8, 0.5, 0.6, 1.0, 1.3, 1.5, 1.2]
-        yt_views_history = [max(1, int(base * f)) for f in factors]
+    if yt_initial_views == 0:
+        yt_initial_views = cur_views
+
+    # Initialize last views baseline
+    if yt_last_views <= 0:
         yt_last_views = cur_views
         yt_last_views_time = now
         save_yt_views(yt_views_history, yt_last_views, yt_last_views_time)
         return
 
-    interval_s = 10800  # 3 hours per slot for 48h (16 slots * 3h = 48h)
+    interval_s = 3600  # 1 hour slot window
     if yt_last_views_time > 0 and (now - yt_last_views_time >= interval_s):
         delta = max(0, cur_views - yt_last_views)
         yt_views_history.append(delta)
@@ -386,11 +387,13 @@ def record_yt_views_sample(cur_views):
         yt_last_views_time = now
         save_yt_views(yt_views_history, yt_last_views, yt_last_views_time)
     else:
-        # Live ongoing slot update: reflect real delta growth in the 16th bar
-        if yt_last_views > 0:
+        # Live slot update: update current interval delta if new views arrived
+        if yt_views_history:
             live_delta = max(0, cur_views - yt_last_views)
             if live_delta > yt_views_history[-1]:
                 yt_views_history[-1] = live_delta
+        elif cur_views > yt_last_views:
+            yt_views_history.append(cur_views - yt_last_views)
 
 def fetch_youtube_stats():
     global yt_data, yt_stats, yt_history, yt_channel_id, yt_api_key, yt_views_history
@@ -543,9 +546,10 @@ def render_html(temp, free_kb, rssi, uptime_s):
     cloud_summary = f"{up_count}/{total_sites} UP" if total_sites > 0 else "0 SITES"
 
     yt_title = yt_data.get("title", "YouTube")
-    v_48h = sum(yt_views_history) if yt_views_history else 0
+    session_gain = max(0, yt_data["views"] - yt_initial_views) if yt_initial_views > 0 else 0
+    gain_badge = f' <span style="color:#10b981;font-size:11px;font-weight:700">+{fmt_num(session_gain)}</span>' if session_gain > 0 else ''
     if yt_data.get("status") == "OK":
-        yt_badge = f'<span style="color:#10b981;font-weight:700">{fmt_num(yt_data["subs"])} Subs</span> <span style="color:#22d3ee;font-size:11px;font-weight:700;margin-left:6px">+{fmt_num(v_48h)} (48h)</span>'
+        yt_badge = f'<span style="color:#10b981;font-weight:700">{fmt_num(yt_data["subs"])} Subs</span> <span style="color:#22d3ee;font-size:11px;font-weight:700;margin-left:6px">{fmt_num(yt_data["views"])} Views</span>{gain_badge}'
     else:
         yt_badge = f'<span style="color:#fbbf24;font-weight:700">{yt_data.get("status", "WAIT")}</span>'
     yt_chan_disp = yt_channel_id if yt_channel_id else "Not set"
@@ -1377,26 +1381,32 @@ while True:
             # Horizontal Divider Line 1
             lcd.hline(6, 54, 116, Theme.BORDER)
 
-            # Section 2: 48H Views Metric & Min/Max Arrows
-            v_48h = sum(yt_views_history) if yt_views_history else 0
-            ui.draw_text(lcd, "48H VIEWS", 6, 59, Theme.TEXT_MUTED, font="6x8")
-            ui.draw_right(lcd, f"+{fmt_num(v_48h)}", 59, Theme.SUCCESS, margin=6, font="6x8")
+            # Section 2: Lifetime Total Views & Tracked Session Gain
+            ui.draw_text(lcd, "VIEWS", 6, 58, Theme.TEXT_MUTED, font="6x8")
+            v_str = fmt_num(yt_data["views"])
+            ui.draw_text(lcd, v_str, 42, 58, Theme.INFO, font="6x8")
 
+            session_gain = max(0, yt_data["views"] - yt_initial_views) if yt_initial_views > 0 else 0
+            gain_str = f"+{fmt_num(session_gain)}" if session_gain > 0 else "0 GAIN"
+            gain_col = Theme.SUCCESS if session_gain > 0 else Theme.TEXT_DARK
+            ui.draw_right(lcd, gain_str, 58, gain_col, margin=6, font="6x8")
+
+            # Min / Max / Sync stats
             min_v = min(yt_views_history) if yt_views_history else 0
-            max_v = max(yt_views_history) if yt_views_history else 1
+            max_v = max(yt_views_history) if yt_views_history else 0
 
-            # Down arrow (Min views in 48h) + value
-            ui.draw_arrow_down(lcd, 6, 70, Theme.SUCCESS)
-            ui.draw_text(lcd, f"{min_v}", 15, 70, Theme.SUCCESS, font="6x8")
+            ui.draw_arrow_down(lcd, 6, 69, Theme.SUCCESS)
+            ui.draw_text(lcd, f"{min_v}", 15, 69, Theme.SUCCESS, font="6x8")
 
-            # Up arrow (Max views in 48h) + value
-            ui.draw_arrow_up(lcd, 66, 70, Theme.WARNING)
-            ui.draw_text(lcd, f"{max_v}", 75, 70, Theme.WARNING, font="6x8")
+            ui.draw_arrow_up(lcd, 48, 69, Theme.WARNING)
+            ui.draw_text(lcd, f"{max_v}", 57, 69, Theme.WARNING, font="6x8")
+
+            ui.draw_right(lcd, "SYNC 3m", 69, Theme.TEXT_MUTED, margin=6, font="6x8")
 
             # Horizontal Divider Line 2
             lcd.hline(6, 80, 116, Theme.BORDER)
 
-            # Section 3: 48H Views Histogram Bar Chart (No boxes, clean baseline)
+            # Section 3: Genuine View Deltas Histogram Bar Chart
             ui.latency_chart(lcd, 6, 83, 116, 43, yt_views_history, min_val=min_v, max_val=max_v)
 
     # --------------------------------------------------------------------------

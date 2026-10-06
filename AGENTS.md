@@ -80,15 +80,15 @@
 
 ## 5. YouTube Channel Tracker Architecture
 - **API**: Official YouTube Data API v3 (`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&...`) over TLS port 443 with RP2040 built-in `ssl.wrap_socket`.
-- **Query Resolution**: Automatically supports Channel IDs (`id=UC...`) and handles (`forHandle=%40handle`).
-- **Data Extracted**: Channel Title, Subscriber Count, View Count, Video Count.
+- **Query Frequency**: Automatically polls every 180 seconds (3 minutes) in the background (using 480 quota units/day out of 10,000 free units/day). KEY2 triggers manual sync on demand.
+- **Data Extracted**: Channel Title, Subscriber Count, Cumulative Lifetime View Count, Public Video Count.
 - **Dedicated Screen (`YT`)**:
   - Section 1: Single-line channel title, hero subscriber count (`ui.draw_big`), `SUBS` badge, and video count (`VIDS`).
   - 1px horizontal line divider (`y = 54`).
-  - Section 2: `48H VIEWS` total gain (`+XXX`), followed by daily Min & Max interval views with char-sized `↓` / `↑` arrow icons.
+  - Section 2: Lifetime Total Views (`VIEWS: X.XK`), real tracked Session Gain (`+X GAIN`), and Min & Max interval views with char-sized `↓` / `↑` arrow icons.
   - 1px horizontal line divider (`y = 80`).
-  - Section 3: 48-Hour Views histogram bar chart (16 bounded bars, 3 hours per bar = 48h) with clean baseline axis at `y = 124` and color-coded spikes (`Theme.SUCCESS` emerald, `Theme.INFO` cyan, `Theme.WARNING` amber).
-- **Persistence**: Persistently stored in `youtube.txt` (channel + key) and `yt_views.txt` (48-hour bounded view samples).
+  - Section 3: Genuine View Deltas histogram bar chart (16 bounded bars, 1 hour per bar) with clean baseline axis and color-coded spikes (zero synthetic seed data).
+- **Persistence**: Persistently stored in `youtube.txt` (channel + key) and `yt_views.txt` (bounded genuine view deltas).
 - **Web UI Management**: Live config form on port 80 (`http://<pico_ip>/`) to update channel handle/ID and API key on the fly without re-flashing.
 
 ## 6. Web Server & Persistence

@@ -145,9 +145,10 @@ All interactions are strictly optimized for a 3-button navigation model:
 - **Handle & Channel ID Support**: Automatically detects handles (`@yourchannel` or `yourchannel`) or Channel IDs (`UC...`).
 - **Telemetry Displayed**:
   - Hero Subscriber count in bold (`Theme.DANGER` rose) + `SUBS` badge and `VIDS` count.
-  - Total 48-Hour Views gain (`48H VIEWS +XXX`).
-  - Min & Max interval views with char-sized `↓` / `↑` arrow icons (zero text labels).
-  - 16-bar 48-Hour Views histogram chart (3 hours per bar = 48h) with color-coded spikes on a 1px baseline axis.
+  - Lifetime Total Views (`VIEWS`) and tracked session gain (`+X GAIN`).
+  - Min & Max interval delta views with char-sized `↓` / `↑` arrow icons.
+  - 16-bar genuine views histogram chart with color-coded spikes on a 1px baseline axis.
+  - Polling status (`SYNC 3m` background poll, ~480 quota units/day, well under YouTube's free 10,000 quota limit).
 - **Persistence**: Saved persistently to `yt_views.txt` and `youtube.txt` on flash storage.
 - **Dynamic Web Configuration**: Enter API key and channel handle directly from the browser at `http://<pico_ip>/` — instantly saves to `youtube.txt` and updates the LCD display without reflashing.
 
