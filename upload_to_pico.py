@@ -48,7 +48,7 @@ if __name__ == "__main__":
         print("   cp secrets.example.py secrets.py")
         sys.exit(1)
 
-    files = ["lcd1in44.py", "ssd1306.py", "secrets.py", "picoui.py", "main.py"]
+    files = ["lcd1in44.py", "ssd1306.py", "secrets.py", "picoui.py", "weather.py", "youtube_service.py", "main.py"]
     if os.path.exists("yt_views.txt"):
         files.append("yt_views.txt")
 

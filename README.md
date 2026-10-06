@@ -218,7 +218,9 @@ All interactions are strictly optimized for a 3-button navigation model:
 pico/
 ├── lcd1in44.py       # Waveshare ST7735S display driver & button debouncing
 ├── picoui.py         # Tailwind design tokens, 6x8 font, arrows, & latency chart
-├── main.py           # Core dashboard app, web server, YouTube tracker & NOC monitor
+├── weather.py        # IP geolocation auto-detection & Open-Meteo weather client
+├── youtube_service.py# YouTube Data API v3 client & lifetime stats tracker
+├── main.py           # Core dashboard app, web server, and display event loop
 ├── secrets.py        # Wi-Fi SSID, Password, and fallback YouTube API credentials
 ├── upload_to_pico.py # Automated Raw-REPL deployment tool over COM3 (115200 baud)
 ├── sites.txt         # Persistent monitored website entries

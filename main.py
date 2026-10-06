@@ -274,393 +274,29 @@ if wlan.isconnected() and monitored_sites:
     record_site_result(monitored_sites[0], up, code, ms)
 
 # ==============================================================================
-# 5.5 YOUTUBE CHANNEL TRACKER & PERSISTENCE
+# 5.5 SUBSYSTEMS (YouTube & Weather Services)
 # ==============================================================================
-YT_FILE = "youtube.txt"
+import weather
+import youtube_service as yt_svc
 
-def load_yt_config():
-    ch = ""
-    key = ""
-    try:
-        from secrets import YOUTUBE_CHANNEL_ID, YOUTUBE_API_KEY
-        ch = YOUTUBE_CHANNEL_ID
-        key = YOUTUBE_API_KEY
-    except Exception:
-        pass
-    try:
-        with open(YT_FILE, "r") as f:
-            lines = [l.strip() for l in f.readlines() if l.strip()]
-            if len(lines) >= 1 and lines[0]:
-                ch = lines[0]
-            if len(lines) >= 2 and lines[1]:
-                key = lines[1]
-    except Exception:
-        pass
-    return ch, key
+# Alias shared structures and helpers
+yt_data = yt_svc.yt_data
+fmt_num = yt_svc.fmt_num
+loc_data = weather.loc_data
+weather_data = weather.weather_data
 
-def save_yt_config(ch, key):
-    try:
-        with open(YT_FILE, "w") as f:
-            f.write(ch.strip() + "\n")
-            f.write(key.strip() + "\n")
-    except Exception:
-        pass
-
-def fmt_num(n):
-    if n >= 1000000:
-        return f"{n/1000000:.1f}M"
-    elif n >= 10000:
-        return f"{n/1000:.1f}K"
-    elif n >= 1000:
-        return f"{n/1000:.1f}K"
-    return str(n)
-
-yt_channel_id, yt_api_key = load_yt_config()
-yt_data = {
-    "subs": 0,
-    "views": 0,
-    "videos": 0,
-    "title": "YouTube",
-    "status": "WAIT" if (yt_channel_id and yt_api_key) else "NO-KEY",
-    "last_sync": 0,
-}
-yt_stats = {"min_subs": 0, "max_subs": 0}
-yt_history = []
 last_yt_check_time = 0
-
-# 48-Hour Views Tracking (16 slots * 3 hours = 48 hours)
-YT_VIEWS_FILE = "yt_views.txt"
-
-def load_yt_views():
-    hist = []
-    last_v = 0
-    last_t = 0
-    try:
-        with open(YT_VIEWS_FILE, "r") as f:
-            for line in f.readlines():
-                line = line.strip()
-                if line:
-                    parts = line.split(",")
-                    if len(parts) >= 3:
-                        last_t = int(parts[0])
-                        last_v = int(parts[1])
-                        hist.append(int(parts[2]))
-    except Exception:
-        pass
-    return hist[-16:], last_v, last_t
-
-def save_yt_views(hist, last_v, last_t):
-    try:
-        with open(YT_VIEWS_FILE, "w") as f:
-            start = max(0, len(hist) - 16)
-            for d in hist[start:]:
-                f.write(f"{last_t},{last_v},{d}\n")
-    except Exception:
-        pass
-
-yt_views_history, yt_last_views, yt_last_views_time = load_yt_views()
-yt_initial_views = 0
-
-def record_yt_views_sample(cur_views):
-    global yt_views_history, yt_last_views, yt_last_views_time, yt_initial_views
-    now = time.time()
-    if cur_views <= 0:
-        return
-
-    if yt_initial_views == 0:
-        yt_initial_views = cur_views
-
-    # Initialize last views baseline
-    if yt_last_views <= 0:
-        yt_last_views = cur_views
-        yt_last_views_time = now
-        save_yt_views(yt_views_history, yt_last_views, yt_last_views_time)
-        return
-
-    interval_s = 3600  # 1 hour slot window
-    if yt_last_views_time > 0 and (now - yt_last_views_time >= interval_s):
-        delta = max(0, cur_views - yt_last_views)
-        yt_views_history.append(delta)
-        if len(yt_views_history) > 16:
-            yt_views_history.pop(0)
-        yt_last_views = cur_views
-        yt_last_views_time = now
-        save_yt_views(yt_views_history, yt_last_views, yt_last_views_time)
-    else:
-        # Live slot update: update current interval delta if new views arrived
-        if yt_views_history:
-            live_delta = max(0, cur_views - yt_last_views)
-            if live_delta > yt_views_history[-1]:
-                yt_views_history[-1] = live_delta
-        elif cur_views > yt_last_views:
-            yt_views_history.append(cur_views - yt_last_views)
-
-def fetch_youtube_stats():
-    global yt_data, yt_stats, yt_history, yt_channel_id, yt_api_key, yt_views_history
-    if not yt_channel_id or not yt_api_key:
-        yt_data["status"] = "NO-KEY"
-        return False
-    if not wlan.isconnected():
-        yt_data["status"] = "NO-WIFI"
-        return False
-
-    gc.collect()
-    ch = yt_channel_id.strip()
-    key = yt_api_key.strip()
-
-    if ch.startswith("UC") and len(ch) >= 20:
-        param = f"id={ch}"
-    else:
-        handle = ch if ch.startswith("@") else f"@{ch}"
-        param = f"forHandle=%40{handle.lstrip('@')}"
-
-    path = f"/youtube/v3/channels?part=snippet,statistics&{param}&key={key}"
-    s = None
-    try:
-        ai = socket.getaddrinfo("www.googleapis.com", 443)[0][-1]
-        s_raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s_raw.settimeout(6.0)
-        s_raw.connect(ai)
-        s = ssl.wrap_socket(s_raw, server_hostname="www.googleapis.com")
-
-        req = f"GET {path} HTTP/1.1\r\nHost: www.googleapis.com\r\nUser-Agent: PicoW\r\nConnection: close\r\n\r\n".encode()
-        s.write(req)
-
-        raw = b""
-        while len(raw) < 4096:
-            c = s.read(512)
-            if not c:
-                break
-            raw += c
-        s.close()
-        s = None
-
-        s_idx = raw.find(b'{')
-        e_idx = raw.rfind(b'}')
-        if s_idx == -1 or e_idx == -1:
-            yt_data["status"] = "ERR-RSP"
-            return False
-
-        data = ujson.loads(raw[s_idx:e_idx+1].decode('utf-8', 'ignore'))
-        if "error" in data:
-            yt_data["status"] = f"E{data['error'].get('code', 400)}"
-            return False
-
-        items = data.get("items", [])
-        if not items:
-            yt_data["status"] = "NO-CHAN"
-            return False
-
-        item = items[0]
-        title = item.get("snippet", {}).get("title", "YouTube")
-        stats = item.get("statistics", {})
-        subs = int(stats.get("subscriberCount", 0))
-        views = int(stats.get("viewCount", 0))
-        vids = int(stats.get("videoCount", 0))
-
-        yt_data["title"] = title
-        yt_data["subs"] = subs
-        yt_data["views"] = views
-        yt_data["videos"] = vids
-        yt_data["status"] = "OK"
-        yt_data["last_sync"] = time.time()
-
-        record_yt_views_sample(views)
-
-        if not yt_history:
-            yt_history.append(subs)
-        else:
-            yt_history.append(subs)
-            if len(yt_history) > 16:
-                yt_history.pop(0)
-
-        cur_min = yt_stats.get("min_subs", 0)
-        cur_max = yt_stats.get("max_subs", 0)
-        if cur_min == 0 or subs < cur_min:
-            yt_stats["min_subs"] = subs
-        if subs > cur_max:
-            yt_stats["max_subs"] = subs
-
-        return True
-    except Exception:
-        yt_data["status"] = "ERR"
-        return False
-    finally:
-        if s:
-            try:
-                s.close()
-            except:
-                pass
-        gc.collect()
-
-if wlan.isconnected() and yt_channel_id and yt_api_key:
-    fetch_youtube_stats()
-
-# ==============================================================================
-# 5.6 LOCAL WEATHER & IP GEOLOCATION (Open-Meteo, Port 80, Zero-Key)
-# ==============================================================================
-WX_FILE = "weather.txt"
-
-def load_wx_config():
-    try:
-        with open(WX_FILE, "r") as f:
-            lines = [l.strip() for l in f.readlines() if l.strip()]
-            if len(lines) >= 3:
-                return lines[0], float(lines[1]), float(lines[2]), True
-    except Exception:
-        pass
-    return "AUTO", 38.625, 34.714, False
-
-def save_wx_config(city, lat, lon):
-    try:
-        with open(WX_FILE, "w") as f:
-            f.write(city.strip() + "\n")
-            f.write(f"{lat:.4f}\n")
-            f.write(f"{lon:.4f}\n")
-    except Exception:
-        pass
-
-wx_override_city, wx_override_lat, wx_override_lon, wx_is_manual = load_wx_config()
-
-loc_data = {
-    "city": wx_override_city if wx_is_manual else "DETECTING",
-    "lat": wx_override_lat,
-    "lon": wx_override_lon,
-    "resolved": wx_is_manual,
-}
-
-weather_data = {
-    "temp": None,
-    "humidity": None,
-    "wind": None,
-    "code": 0,
-    "desc": "WAIT",
-    "history": [],  # Bounded to 16 samples
-    "min_t": None,
-    "max_t": None,
-    "status": "WAIT",
-    "last_sync": 0,
-}
 last_weather_check_time = 0
 
-def resolve_location():
-    global loc_data
-    if not wlan.isconnected() or wx_is_manual:
-        return loc_data["resolved"]
-    s = None
-    try:
-        host = "ip-api.com"
-        ai = socket.getaddrinfo(host, 80)[0][-1]
-        s = socket.socket()
-        s.settimeout(4.0)
-        s.connect(ai)
-        req = f"GET /json/?fields=status,city,lat,lon HTTP/1.0\r\nHost: {host}\r\nUser-Agent: PicoW\r\n\r\n"
-        s.send(req.encode())
-        data = b""
-        while True:
-            c = s.recv(512)
-            if not c:
-                break
-            data += c
-            if len(data) > 2048:
-                break
-        parts = data.split(b"\r\n\r\n", 1)
-        if len(parts) > 1:
-            res = json.loads(parts[1].decode('utf-8', 'ignore'))
-            if res.get("status") == "success":
-                raw_city = res.get("city", "UNKNOWN")
-                clean_city = raw_city.replace("İ", "I").replace("ı", "i").replace("ş", "s").replace("Ş", "S") \
-                                     .replace("ğ", "g").replace("Ğ", "G").replace("ü", "u").replace("Ü", "U") \
-                                     .replace("ö", "o").replace("Ö", "O").replace("ç", "c").replace("Ç", "C")
-                loc_data["city"] = clean_city[:12].upper()
-                loc_data["lat"] = float(res.get("lat", 38.625))
-                loc_data["lon"] = float(res.get("lon", 34.714))
-                loc_data["resolved"] = True
-                return True
-    except Exception:
-        pass
-    finally:
-        if s:
-            try:
-                s.close()
-            except:
-                pass
-        gc.collect()
-    return False
-
-def get_wx_desc(code):
-    if code == 0: return "CLEAR"
-    elif code in (1, 2): return "PARTLY"
-    elif code == 3: return "CLOUDY"
-    elif code in (45, 48): return "FOG"
-    elif code in (51, 53, 55, 61, 63, 65, 80, 81, 82): return "RAIN"
-    elif code in (71, 73, 75, 85, 86): return "SNOW"
-    elif code in (95, 96, 99): return "STORM"
-    return "FAIR"
+def fetch_youtube_stats():
+    return yt_svc.fetch_youtube_stats(wlan.isconnected())
 
 def fetch_weather():
-    global weather_data
-    if not wlan.isconnected():
-        weather_data["status"] = "NO-WIFI"
-        return False
-    if not loc_data["resolved"]:
-        resolve_location()
-    s = None
-    try:
-        lat = loc_data["lat"]
-        lon = loc_data["lon"]
-        host = "api.open-meteo.com"
-        path = f"/v1/forecast?latitude={lat:.4f}&longitude={lon:.4f}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code"
-        ai = socket.getaddrinfo(host, 80)[0][-1]
-        s = socket.socket()
-        s.settimeout(6.0)
-        s.connect(ai)
-        req = f"GET {path} HTTP/1.0\r\nHost: {host}\r\nUser-Agent: PicoW\r\n\r\n"
-        s.send(req.encode())
-        data = b""
-        while True:
-            c = s.recv(512)
-            if not c:
-                break
-            data += c
-            if len(data) > 3072:
-                break
-        parts = data.split(b"\r\n\r\n", 1)
-        if len(parts) > 1:
-            res = json.loads(parts[1].decode('utf-8', 'ignore'))
-            cur = res.get("current", {})
-            if "temperature_2m" in cur:
-                t = float(cur["temperature_2m"])
-                weather_data["temp"] = t
-                weather_data["humidity"] = int(cur.get("relative_humidity_2m", 0))
-                weather_data["wind"] = float(cur.get("wind_speed_10m", 0.0))
-                code = int(cur.get("weather_code", 0))
-                weather_data["code"] = code
-                weather_data["desc"] = get_wx_desc(code)
-                weather_data["last_sync"] = time.time()
-                weather_data["status"] = "OK"
-
-                if weather_data["min_t"] is None or t < weather_data["min_t"]:
-                    weather_data["min_t"] = t
-                if weather_data["max_t"] is None or t > weather_data["max_t"]:
-                    weather_data["max_t"] = t
-
-                weather_data["history"].append(int(round(t)))
-                if len(weather_data["history"]) > 16:
-                    weather_data["history"].pop(0)
-                return True
-    except Exception:
-        weather_data["status"] = "ERR"
-    finally:
-        if s:
-            try:
-                s.close()
-            except:
-                pass
-        gc.collect()
-    return False
+    return weather.fetch_weather(wlan.isconnected())
 
 if wlan.isconnected():
+    if yt_svc.yt_channel_id and yt_svc.yt_api_key:
+        fetch_youtube_stats()
     fetch_weather()
 
 # ==============================================================================
@@ -713,13 +349,13 @@ def render_html(temp, free_kb, rssi, uptime_s):
     cloud_summary = f"{up_count}/{total_sites} UP" if total_sites > 0 else "0 SITES"
 
     yt_title = yt_data.get("title", "YouTube")
-    session_gain = max(0, yt_data["views"] - yt_initial_views) if yt_initial_views > 0 else 0
+    session_gain = max(0, yt_data["views"] - yt_svc.yt_initial_views) if yt_svc.yt_initial_views > 0 else 0
     gain_badge = f' <span style="color:#10b981;font-size:11px;font-weight:700">+{fmt_num(session_gain)}</span>' if session_gain > 0 else ''
     if yt_data.get("status") == "OK":
         yt_badge = f'<span style="color:#10b981;font-weight:700">{fmt_num(yt_data["subs"])} Subs</span> <span style="color:#22d3ee;font-size:11px;font-weight:700;margin-left:6px">{fmt_num(yt_data["views"])} Views</span>{gain_badge}'
     else:
         yt_badge = f'<span style="color:#fbbf24;font-weight:700">{yt_data.get("status", "WAIT")}</span>'
-    yt_chan_disp = yt_channel_id if yt_channel_id else "Not set"
+    yt_chan_disp = yt_svc.yt_channel_id if yt_svc.yt_channel_id else "Not set"
 
     wx_city = loc_data["city"]
     wx_desc = weather_data["desc"]
@@ -779,8 +415,8 @@ input{{flex:1;background:#0b0f19;border:1px solid #384253;border-radius:6px;colo
 <div>{yt_badge}</div>
 </div>
 <form action="/" method="GET" style="display:flex;flex-direction:column;gap:6px;margin:0">
-<input type="text" name="yt_ch" value="{yt_channel_id}" placeholder="Channel ID (UC...) or @handle" maxlength="32" required>
-<input type="password" name="yt_key" value="{yt_api_key}" placeholder="YouTube Data API v3 Key" maxlength="50" required>
+<input type="text" name="yt_ch" value="{yt_svc.yt_channel_id}" placeholder="Channel ID (UC...) or @handle" maxlength="32" required>
+<input type="password" name="yt_key" value="{yt_svc.yt_api_key}" placeholder="YouTube Data API v3 Key" maxlength="50" required>
 <button type="submit" class="bsend" style="background:#f43f5e;width:100%">Save &amp; Fetch Stats</button>
 </form>
 </div>
@@ -914,11 +550,11 @@ def poll_web_server():
                         k, v = part.split("=", 1)
                         params[k] = v.replace("%40", "@").replace("%20", " ").replace("+", " ").strip()
                 if "yt_ch" in params and params["yt_ch"]:
-                    yt_channel_id = params["yt_ch"]
+                    yt_svc.yt_channel_id = params["yt_ch"]
                 if "yt_key" in params and params["yt_key"]:
-                    yt_api_key = params["yt_key"]
-                save_yt_config(yt_channel_id, yt_api_key)
-                if wlan.isconnected() and yt_channel_id and yt_api_key:
+                    yt_svc.yt_api_key = params["yt_key"]
+                yt_svc.save_yt_config(yt_svc.yt_channel_id, yt_svc.yt_api_key)
+                if wlan.isconnected() and yt_svc.yt_channel_id and yt_svc.yt_api_key:
                     fetch_youtube_stats()
             except Exception:
                 pass
@@ -982,7 +618,7 @@ while True:
         last_site_check_time = time.time()
 
     # 2b. Periodic background check of YouTube stats (every 600s / 10m)
-    if wlan.isconnected() and yt_channel_id and yt_api_key and (time.time() - last_yt_check_time > 600):
+    if wlan.isconnected() and yt_svc.yt_channel_id and yt_svc.yt_api_key and (time.time() - last_yt_check_time > 600):
         fetch_youtube_stats()
         last_yt_check_time = time.time()
 
@@ -1045,7 +681,7 @@ while True:
                             up, code, ms = check_site(cur_h)
                             record_site_result(cur_h, up, code, ms)
                 elif screen == "yt":
-                    if yt_channel_id and yt_api_key and (yt_data["status"] != "OK" or time.time() - yt_data["last_sync"] > 300):
+                    if yt_svc.yt_channel_id and yt_svc.yt_api_key and (yt_data["status"] != "OK" or time.time() - yt_data["last_sync"] > 300):
                         fetch_youtube_stats()
                 elif screen == "wx":
                     if weather_data["status"] != "OK" or time.time() - weather_data["last_sync"] > 900:
@@ -1571,7 +1207,7 @@ while True:
     elif screen == "yt":
         ui.header(lcd, "YT", right_badge=yt_data["status"][:6], accent=Theme.DANGER)
 
-        if not yt_channel_id or not yt_api_key:
+        if not yt_svc.yt_channel_id or not yt_svc.yt_api_key:
             ui.draw_centered(lcd, "CONFIG NEEDED", 42, Theme.WARNING, font="6x8")
             ui.draw_centered(lcd, "Set API Key & ID", 58, Theme.TEXT_MUTED, font="6x8")
             ui.draw_centered(lcd, "in Web Dashboard:", 72, Theme.TEXT_MUTED, font="6x8")
@@ -1581,7 +1217,7 @@ while True:
                 ui.draw_centered(lcd, "Connect Wi-Fi", 88, Theme.DANGER, font="6x8")
         else:
             # Section 1: Channel Title & Hero Subscribers + VIDS
-            clean_title = (yt_data["title"] if yt_data["title"] != "YouTube" else yt_channel_id)[:19].upper()
+            clean_title = (yt_data["title"] if yt_data["title"] != "YouTube" else yt_svc.yt_channel_id)[:19].upper()
             ui.draw_text(lcd, clean_title, 6, 23, Theme.TEXT_MUTED, font="6x8")
 
             s_str = fmt_num(yt_data["subs"])
@@ -1597,14 +1233,14 @@ while True:
             v_str = fmt_num(yt_data["views"])
             ui.draw_text(lcd, v_str, 42, 58, Theme.INFO, font="6x8")
 
-            session_gain = max(0, yt_data["views"] - yt_initial_views) if yt_initial_views > 0 else 0
+            session_gain = max(0, yt_data["views"] - yt_svc.yt_initial_views) if yt_svc.yt_initial_views > 0 else 0
             gain_str = f"+{fmt_num(session_gain)}" if session_gain > 0 else "0 GAIN"
             gain_col = Theme.SUCCESS if session_gain > 0 else Theme.TEXT_DARK
             ui.draw_right(lcd, gain_str, 58, gain_col, margin=6, font="6x8")
 
             # Min / Max / Sync stats
-            min_v = min(yt_views_history) if yt_views_history else 0
-            max_v = max(yt_views_history) if yt_views_history else 0
+            min_v = min(yt_svc.yt_views_history) if yt_svc.yt_views_history else 0
+            max_v = max(yt_svc.yt_views_history) if yt_svc.yt_views_history else 0
 
             ui.draw_arrow_down(lcd, 6, 69, Theme.SUCCESS)
             ui.draw_text(lcd, f"{min_v}", 15, 69, Theme.SUCCESS, font="6x8")
@@ -1618,7 +1254,7 @@ while True:
             lcd.hline(6, 80, 116, Theme.BORDER)
 
             # Section 3: Genuine View Deltas Histogram Bar Chart
-            ui.latency_chart(lcd, 6, 83, 116, 43, yt_views_history, min_val=min_v, max_val=max_v)
+            ui.latency_chart(lcd, 6, 83, 116, 43, yt_svc.yt_views_history, min_val=min_v, max_val=max_v)
 
     # --------------------------------------------------------------------------
     # SCREEN 4.6: LOCAL WEATHER (Open-Meteo & IP Geolocation, Ultra-Minimalist)
