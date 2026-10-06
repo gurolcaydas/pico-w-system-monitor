@@ -290,6 +290,166 @@ def latency_chart(lcd, x, y, w, h, values, min_val=None, max_val=None):
         
         lcd.fill_rect(bx, by, bar_w, bar_h, b_color)
 
+def draw_weather_icon(lcd, x: int, y: int, desc: str):
+    """
+    Renders crisp, high-contrast vector weather graphics (22x15 px).
+    Ultra-minimalist, zero border box, optimized for 128x128 ST7735S.
+    """
+    desc = (desc or "").upper()
+    if desc == "CLEAR":
+        # Radiant Sun: 7x7 core + 8 cardinal & diagonal rays in Amber/Gold
+        c = Theme.WARNING
+        lcd.fill_rect(x + 7, y + 4, 7, 7, c)
+        lcd.vline(x + 10, y + 1, 2, c)   # Top ray
+        lcd.vline(x + 10, y + 12, 2, c)  # Bottom ray
+        lcd.hline(x + 4, y + 7, 2, c)    # Left ray
+        lcd.hline(x + 15, y + 7, 2, c)   # Right ray
+        lcd.pixel(x + 5, y + 2, c)
+        lcd.pixel(x + 15, y + 2, c)
+        lcd.pixel(x + 5, y + 12, c)
+        lcd.pixel(x + 15, y + 12, c)
+
+    elif desc == "PARTLY":
+        # Sun peaking behind cloud
+        c_sun = Theme.WARNING
+        # Sun (top-left) in Amber
+        lcd.fill_rect(x + 3, y + 2, 6, 6, c_sun)
+        lcd.vline(x + 5, y, 2, c_sun)
+        lcd.hline(x + 1, y + 4, 2, c_sun)
+        lcd.pixel(x + 2, y + 1, c_sun)
+        # Cloud (foreground, shifted bottom-right) in Pure White
+        c_cld = Theme.TEXT
+        lcd.fill_rect(x + 7, y + 5, 6, 4, c_cld)   # High puff
+        lcd.fill_rect(x + 12, y + 6, 5, 4, c_cld)  # Right puff
+        lcd.fill_rect(x + 5, y + 8, 14, 5, c_cld)  # Base puff
+        lcd.hline(x + 6, y + 13, 12, Theme.SURFACE_ALT)
+
+    elif desc in ("CLOUDY", "FAIR"):
+        # Fluffy Cloud
+        c_cld = Theme.TEXT
+        lcd.fill_rect(x + 5, y + 4, 6, 5, c_cld)
+        lcd.fill_rect(x + 10, y + 2, 7, 7, c_cld)
+        lcd.fill_rect(x + 3, y + 7, 16, 6, c_cld)
+        lcd.hline(x + 4, y + 13, 14, Theme.SURFACE_ALT)
+
+    elif desc == "RAIN":
+        # Cloud + 3 diagonal Cyan rain streaks
+        c_cld = Theme.TEXT
+        lcd.fill_rect(x + 5, y + 2, 6, 4, c_cld)
+        lcd.fill_rect(x + 10, y + 1, 7, 5, c_cld)
+        lcd.fill_rect(x + 3, y + 5, 16, 5, c_cld)
+        c_rain = Theme.INFO
+        lcd.line(x + 5, y + 11, x + 3, y + 14, c_rain)
+        lcd.line(x + 10, y + 11, x + 8, y + 14, c_rain)
+        lcd.line(x + 15, y + 11, x + 13, y + 14, c_rain)
+
+    elif desc == "STORM":
+        # Cloud + Yellow lightning bolt
+        c_cld = Theme.TEXT_MUTED
+        lcd.fill_rect(x + 4, y + 2, 6, 4, c_cld)
+        lcd.fill_rect(x + 9, y + 1, 7, 5, c_cld)
+        lcd.fill_rect(x + 3, y + 5, 16, 5, c_cld)
+        c_bolt = Theme.WARNING
+        lcd.line(x + 11, y + 9, x + 8, y + 12, c_bolt)
+        lcd.hline(x + 8, y + 12, 4, c_bolt)
+        lcd.line(x + 11, y + 12, x + 7, y + 15, c_bolt)
+
+    elif desc == "SNOW":
+        # Cloud + White snowflakes
+        c_cld = Theme.TEXT
+        lcd.fill_rect(x + 4, y + 2, 6, 4, c_cld)
+        lcd.fill_rect(x + 9, y + 1, 7, 5, c_cld)
+        lcd.fill_rect(x + 3, y + 5, 16, 5, c_cld)
+        c_snow = Theme.TEXT
+        lcd.pixel(x + 5, y + 11, c_snow)
+        lcd.pixel(x + 10, y + 13, c_snow)
+        lcd.pixel(x + 15, y + 11, c_snow)
+
+    elif desc == "FOG":
+        # Horizontal mist lines
+        c_fog = Theme.TEXT_MUTED
+        lcd.hline(x + 3, y + 3, 15, c_fog)
+        lcd.hline(x + 1, y + 7, 19, c_fog)
+        lcd.hline(x + 4, y + 11, 14, c_fog)
+
+    else:
+        # Subtle default
+        lcd.fill_rect(x + 8, y + 4, 6, 6, Theme.BORDER)
+
+def draw_forecast_line_chart(lcd, x, y, w, h, temps, hours):
+    """
+    12-Hour forward-looking temperature forecast line chart.
+    x, y, w, h: Bounding region
+    temps: List of hourly temperature values (up to 12)
+    hours: List of corresponding hour integers (0..23)
+    """
+    # 1. Header Row
+    draw_text(lcd, "12H FCST", x, y, Theme.TEXT_MUTED, font="6x8")
+
+    if not temps:
+        axis_y = y + h - 11
+        lcd.hline(x, axis_y, w, Theme.BORDER)
+        draw_centered(lcd, "AWAITING FCST", y + 20, Theme.TEXT_MUTED, font="6x8")
+        return
+
+    cur_min = min(temps)
+    cur_max = max(temps)
+
+    # Min / Max indicators in header on right side
+    max_str = f"{int(round(cur_max))}C"
+    min_str = f"{int(round(cur_min))}C"
+    rx = x + w
+    max_x = rx - len(max_str) * 6
+    up_arrow_x = max_x - 6
+    min_x = up_arrow_x - 4 - len(min_str) * 6
+    down_arrow_x = min_x - 6
+
+    draw_arrow_down(lcd, down_arrow_x, y, Theme.SUCCESS)
+    draw_text(lcd, min_str, min_x, y, Theme.SUCCESS, font="6x8")
+    draw_arrow_up(lcd, up_arrow_x, y, Theme.WARNING)
+    draw_text(lcd, max_str, max_x, y, Theme.WARNING, font="6x8")
+
+    # 2. Geometry
+    plot_y_top = y + 11
+    plot_y_bot = y + h - 14
+    axis_y = y + h - 11
+    label_y = y + h - 8
+
+    # Baseline axis
+    lcd.hline(x, axis_y, w, Theme.BORDER)
+
+    n = len(temps)
+    if n < 2:
+        return
+
+    span = max(cur_max - cur_min, 1.0)
+    pts = []
+    for i in range(n):
+        px = x + int(round(i * (w - 1) / (n - 1)))
+        py = plot_y_bot - int(round((temps[i] - cur_min) * (plot_y_bot - plot_y_top) / span))
+        pts.append((px, py))
+
+    # 3. Connecting lines
+    for i in range(n - 1):
+        lcd.line(pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1], Theme.WARNING)
+
+    # 4. Node markers (highlight current hour node in White, future nodes in Amber)
+    for i in range(n):
+        node_color = Theme.TEXT if i == 0 else Theme.WARNING
+        lcd.fill_rect(pts[i][0] - 1, pts[i][1] - 1, 3, 3, node_color)
+
+    # 5. Clock / Hour Labels along bottom
+    if hours and len(hours) >= n:
+        step_indices = [0, 4, 8, n - 1]
+        for idx in step_indices:
+            if idx < n:
+                lcd.vline(pts[idx][0], axis_y, 2, Theme.BORDER)
+                lbl = f"{hours[idx]:02d}h"
+                lx = pts[idx][0] - 9
+                lx = max(x, min(x + w - 18, lx))
+                lbl_color = Theme.INFO if idx == 0 else Theme.TEXT_MUTED
+                draw_text(lcd, lbl, lx, label_y, lbl_color, font="6x8")
+
 def metric_widget(lcd, x, y, w, h, label, value_str, unit="", variant="primary", is_active=False):
     """
     Hero Metric Card (e.g. Temperature 24.5 C or CPU 12%).

@@ -1269,50 +1269,42 @@ while True:
             ui.draw_centered(lcd, "WX UNAVAILABLE", 52, Theme.DANGER, font="6x8")
             ui.draw_centered(lcd, weather_data["status"], 68, Theme.TEXT_MUTED, font="6x8")
         else:
-            # Section 1: Hero Temp + Condition Badge + City
+            # Section 1: Hero Temp + Weather Graphic Icon + City + Condition Badge
             t_val = weather_data["temp"]
             t_str = f"{t_val:.1f}" if t_val is not None else "--"
-            ui.draw_big(lcd, t_str, 6, 26, Theme.TEXT)
-            ui.draw_text(lcd, "C", 6 + len(t_str) * 14 + 1, 26, Theme.TEXT_MUTED, font="6x8")
+            ui.draw_big(lcd, t_str, 6, 23, Theme.TEXT)
+            ui.draw_text(lcd, "C", 6 + len(t_str) * 14 + 1, 23, Theme.TEXT_MUTED, font="6x8")
 
-            # Condition badge (Faded borderless pill)
+            # Weather Graphic Icon (22x15 px top right)
             cond_str = weather_data["desc"]
+            ui.draw_weather_icon(lcd, 98, 21, cond_str)
+
+            # City name (left) & Condition Badge (right)
+            ui.draw_text(lcd, loc_data["city"][:13], 6, 41, Theme.TEXT_MUTED, font="6x8")
+
             c_variant = "warning"
             if cond_str in ("RAIN", "STORM"): c_variant = "danger"
             elif cond_str == "CLEAR": c_variant = "success"
             elif cond_str in ("FOG", "SNOW"): c_variant = "info"
-            ui.badge(lcd, 122, 28, cond_str, variant=c_variant, align_right=True)
-
-            ui.draw_text(lcd, loc_data["city"][:18], 6, 44, Theme.TEXT_MUTED, font="6x8")
+            ui.badge(lcd, 122, 39, cond_str, variant=c_variant, align_right=True)
 
             # Horizontal Divider Line 1
-            lcd.hline(6, 54, 116, Theme.BORDER)
+            lcd.hline(6, 51, 116, Theme.BORDER)
 
-            # Section 2: Humidity, Wind & Min/Max
-            ui.draw_text(lcd, "HUM", 6, 58, Theme.TEXT_MUTED, font="6x8")
-            ui.draw_text(lcd, f"{weather_data['humidity']}%", 28, 58, Theme.INFO, font="6x8")
+            # Section 2: Humidity, Wind & Sync Interval
+            ui.draw_text(lcd, "HUM", 6, 56, Theme.TEXT_MUTED, font="6x8")
+            ui.draw_text(lcd, f"{weather_data['humidity']}%", 28, 56, Theme.INFO, font="6x8")
 
-            ui.draw_text(lcd, "WND", 60, 58, Theme.TEXT_MUTED, font="6x8")
-            ui.draw_text(lcd, f"{weather_data['wind']:.1f}k", 82, 58, Theme.PRIMARY, font="6x8")
+            ui.draw_text(lcd, "WND", 58, 56, Theme.TEXT_MUTED, font="6x8")
+            ui.draw_text(lcd, f"{weather_data['wind']:.1f}k", 80, 56, Theme.PRIMARY, font="6x8")
 
-            # Min & Max arrows + Sync
-            min_t = int(round(weather_data["min_t"])) if weather_data["min_t"] is not None else 0
-            max_t = int(round(weather_data["max_t"])) if weather_data["max_t"] is not None else 0
-
-            ui.draw_arrow_down(lcd, 6, 69, Theme.SUCCESS)
-            ui.draw_text(lcd, f"{min_t}C", 15, 69, Theme.SUCCESS, font="6x8")
-
-            ui.draw_arrow_up(lcd, 48, 69, Theme.WARNING)
-            ui.draw_text(lcd, f"{max_t}C", 57, 69, Theme.WARNING, font="6x8")
-
-            ui.draw_right(lcd, "SYNC 15m", 69, Theme.TEXT_MUTED, margin=6, font="6x8")
+            ui.draw_right(lcd, "15m", 56, Theme.TEXT_MUTED, margin=6, font="6x8")
 
             # Horizontal Divider Line 2
-            lcd.hline(6, 80, 116, Theme.BORDER)
+            lcd.hline(6, 67, 116, Theme.BORDER)
 
-            # Section 3: Temperature Trend Chart (16 bars)
-            chart_hist = weather_data["history"] if weather_data["history"] else [int(round(t_val))]
-            ui.latency_chart(lcd, 6, 83, 116, 43, chart_hist, min_val=min_t, max_val=max_t)
+            # Section 3: 12-Hour Forward Temperature Forecast Line Chart
+            ui.draw_forecast_line_chart(lcd, 6, 70, 116, 57, weather_data.get("hourly_temps", []), weather_data.get("hourly_hours", []))
 
     # --------------------------------------------------------------------------
     # SCREEN 4: ABOUT / WEB INFO (Ultra-Minimalist, No Boxes)

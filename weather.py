@@ -40,6 +40,8 @@ weather_data = {
     "code": 0,
     "desc": "WAIT",
     "history": [],  # Bounded to 16 samples
+    "hourly_temps": [],
+    "hourly_hours": [],
     "min_t": None,
     "max_t": None,
     "status": "WAIT",
@@ -114,7 +116,7 @@ def fetch_weather(wlan_connected):
         lat = loc_data["lat"]
         lon = loc_data["lon"]
         host = "api.open-meteo.com"
-        path = f"/v1/forecast?latitude={lat:.4f}&longitude={lon:.4f}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code"
+        path = f"/v1/forecast?latitude={lat:.4f}&longitude={lon:.4f}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m&forecast_hours=12&timezone=auto"
         ai = socket.getaddrinfo(host, 80)[0][-1]
         s = socket.socket()
         s.settimeout(6.0)
@@ -127,7 +129,7 @@ def fetch_weather(wlan_connected):
             if not c:
                 break
             data += c
-            if len(data) > 3072:
+            if len(data) > 4096:
                 break
         parts = data.split(b"\r\n\r\n", 1)
         if len(parts) > 1:
@@ -152,6 +154,19 @@ def fetch_weather(wlan_connected):
                 weather_data["history"].append(int(round(t)))
                 if len(weather_data["history"]) > 16:
                     weather_data["history"].pop(0)
+
+                hourly = res.get("hourly", {})
+                h_times = hourly.get("time", [])
+                h_temps = hourly.get("temperature_2m", [])
+                h_hours = []
+                for ts in h_times[:12]:
+                    try:
+                        # ts is like '2026-10-06T19:00'
+                        h_hours.append(int(ts.split("T")[1].split(":")[0]))
+                    except Exception:
+                        pass
+                weather_data["hourly_temps"] = [float(x) for x in h_temps[:12]]
+                weather_data["hourly_hours"] = h_hours
                 return True
     except Exception:
         weather_data["status"] = "ERR"
