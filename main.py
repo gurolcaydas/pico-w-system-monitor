@@ -1216,14 +1216,14 @@ while True:
             else:
                 ui.draw_centered(lcd, "Connect Wi-Fi", 88, Theme.DANGER, font="6x8")
         else:
-            # Section 1: Channel Title & Hero Subscribers + VIDS
-            clean_title = (yt_data["title"] if yt_data["title"] != "YouTube" else yt_svc.yt_channel_id)[:19].upper()
-            ui.draw_text(lcd, clean_title, 6, 23, Theme.TEXT_MUTED, font="6x8")
+            # Section 1: Channel Title & VIDS on line 1; Hero Subs & SUBS badge on line 2
+            clean_title = (yt_data["title"] if yt_data["title"] != "YouTube" else yt_svc.yt_channel_id)[:11].upper()
+            ui.draw_text(lcd, clean_title, 6, 22, Theme.TEXT_MUTED, font="6x8")
+            ui.draw_right(lcd, f"{fmt_num(yt_data['videos'])} VIDS", 22, Theme.INFO, margin=6, font="6x8")
 
             s_str = fmt_num(yt_data["subs"])
             ui.draw_big(lcd, s_str, 6, 34, Theme.DANGER)
-            ui.draw_text(lcd, "SUBS", 6 + len(s_str) * 14 + 3, 42, Theme.TEXT, font="6x8")
-            ui.draw_right(lcd, f"{yt_data['videos']} VIDS", 42, Theme.TEXT_DARK, margin=6, font="6x8")
+            ui.badge(lcd, 122, 36, "SUBS", variant="danger", align_right=True)
 
             # Horizontal Divider Line 1
             lcd.hline(6, 54, 116, Theme.BORDER)

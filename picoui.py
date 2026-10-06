@@ -258,13 +258,12 @@ def latency_chart(lcd, x, y, w, h, values, min_val=None, max_val=None):
     Minimalist latency histogram / sparkline bar chart.
     values: list of numbers (e.g. latency in ms)
     """
-    if not values:
-        draw_centered(lcd, "Collecting data...", y + (h // 2) - 4, Theme.TEXT_MUTED, font="6x8")
-        return
-
     # Baseline axis
     base_y = y + h - 2
     lcd.hline(x, base_y, w, Theme.BORDER)
+
+    if not values:
+        return
 
     num = len(values)
     high = max_val if (max_val and max_val > 0) else max(max(values), 1)
