@@ -279,6 +279,9 @@ if wlan.isconnected() and monitored_sites:
 import weather
 import youtube_service as yt_svc
 import moon
+import blackjack
+
+bj_game = blackjack.BlackjackGame()
 
 # Alias shared structures and helpers
 yt_data = yt_svc.yt_data
@@ -601,7 +604,7 @@ last_k3 = False
 last_k2 = False
 last_k1 = False
 
-screen_names = ["device", "ping", "cloud", "yt", "wx", "moon", "about"]
+screen_names = ["device", "ping", "cloud", "yt", "wx", "moon", "game", "about"]
 
 dev_cursor = 0        # 0..2 ("CORE", "NET", "MEM")
 dev_detail_view = False
@@ -777,6 +780,17 @@ while True:
                     screen = "menu"
                 elif k2:
                     fetch_weather()
+            elif screen == "game":
+                if k1:
+                    screen = "menu"
+                elif bj_game.state == "PLAYING":
+                    if k3:
+                        bj_game.hit()
+                    elif k2:
+                        bj_game.stand()
+                else:
+                    if k2 or k3:
+                        bj_game.deal()
             else:
                 if k1:
                     screen = "menu"
@@ -820,6 +834,8 @@ while True:
         m_info = moon.get_moon_info()
         moon_val = f"FULL {int(round(m_info['days_to_full']))}d"
 
+        game_val = f"${bj_game.chips}"
+
         about_val = "PORT 80" if wlan.isconnected() else "PICO"
 
         menu_items = [
@@ -829,27 +845,28 @@ while True:
             ("YT", yt_val, yt_col),
             ("WX", wx_val, wx_col),
             ("MOON", moon_val, Theme.INFO),
+            ("21", game_val, Theme.SUCCESS),
             ("WEB", about_val, Theme.TEXT_MUTED),
         ]
 
         start_y = 20
-        row_h = 15
+        row_h = 13
 
         for idx, (title, val, col) in enumerate(menu_items):
             cy = start_y + idx * row_h
             is_sel = (menu_idx == idx)
 
             if is_sel:
-                ui.draw_text(lcd, ">", 4, cy + 3, col, font="6x8")
-                ui.draw_text(lcd, title, 13, cy + 3, col, font="6x8")
-                ui.draw_right(lcd, val, cy + 3, Theme.TEXT, margin=6, font="6x8")
+                ui.draw_text(lcd, ">", 4, cy + 2, col, font="6x8")
+                ui.draw_text(lcd, title, 13, cy + 2, col, font="6x8")
+                ui.draw_right(lcd, val, cy + 2, Theme.TEXT, margin=6, font="6x8")
                 # Highlighted active divider line
-                lcd.hline(6, cy + 14, 116, col)
+                lcd.hline(6, cy + 12, 116, col)
             else:
-                ui.draw_text(lcd, title, 10, cy + 3, Theme.TEXT_MUTED, font="6x8")
-                ui.draw_right(lcd, val, cy + 3, Theme.TEXT_DARK, margin=6, font="6x8")
+                ui.draw_text(lcd, title, 10, cy + 2, Theme.TEXT_MUTED, font="6x8")
+                ui.draw_right(lcd, val, cy + 2, Theme.TEXT_DARK, margin=6, font="6x8")
                 # Subtle divider line
-                lcd.hline(6, cy + 14, 116, Theme.BORDER)
+                lcd.hline(6, cy + 12, 116, Theme.BORDER)
 
     # --------------------------------------------------------------------------
     # --------------------------------------------------------------------------
@@ -1353,6 +1370,12 @@ while True:
         ui.draw_text(lcd, "NEW", 6, 118, Theme.TEXT_DARK, font="6x8")
         ui.draw_centered(lcd, "FULL", 118, Theme.WARNING, font="6x8")
         ui.draw_right(lcd, "NEW", 118, Theme.TEXT_DARK, margin=6, font="6x8")
+
+    # --------------------------------------------------------------------------
+    # SCREEN 4.8: 21 BLACKJACK GAME
+    # --------------------------------------------------------------------------
+    elif screen == "game":
+        blackjack.render_game_screen(lcd, bj_game)
 
     # --------------------------------------------------------------------------
     # SCREEN 4: ABOUT / WEB INFO (Ultra-Minimalist, No Boxes)
