@@ -87,6 +87,21 @@ def ping_host(host="1.1.1.1", timeout_s=1.0):
     except Exception:
         return None, "Timeout"
 
+cached_caydas_ip = "72.61.182.37"
+last_caydas_resolve = 0
+
+def resolve_caydas_ip():
+    global cached_caydas_ip, last_caydas_resolve
+    if wlan.isconnected() and (time.time() - last_caydas_resolve > 600 or not cached_caydas_ip):
+        try:
+            ai = socket.getaddrinfo("caydas.cloud", 80)[0][-1][0]
+            if ai:
+                cached_caydas_ip = ai
+                last_caydas_resolve = time.time()
+        except Exception:
+            pass
+    return cached_caydas_ip if cached_caydas_ip else "72.61.182.37"
+
 def get_ping_targets():
     gw_ip = "192.168.1.1"
     try:
@@ -94,10 +109,12 @@ def get_ping_targets():
             gw_ip = wlan.ifconfig()[2]
     except Exception:
         pass
+    c_ip = resolve_caydas_ip()
     return [
-        {"name": "CF", "ip": "1.1.1.1", "label": "Cloudflare"},
-        {"name": "GOOG", "ip": "8.8.8.8", "label": "Google"},
-        {"name": "GW", "ip": gw_ip, "label": "Gateway"},
+        {"name": "CF", "ip": "1.1.1.1", "label": "Cloudflare", "header": "CF 1.1.1.1"},
+        {"name": "GOOG", "ip": "8.8.8.8", "label": "Google", "header": "GOOG 8.8.8.8"},
+        {"name": "CLOUD", "ip": c_ip, "label": "caydas.cloud", "header": "caydas.cloud"},
+        {"name": "GW", "ip": gw_ip, "label": "Gateway", "header": f"GW {gw_ip}"},
     ]
 
 ping_target_idx = 0
@@ -1095,8 +1112,8 @@ while True:
         last_ms = st.get("last_ms")
         grade_text, grade_var = get_ping_grade(last_ms)
 
-        # Header with Target IP
-        ui.header(lcd, "PING", right_badge=f"{t_name} {t_ip}", accent=Theme.INFO)
+        # Header with Target IP / Host
+        ui.header(lcd, "PING", right_badge=cur_t.get("header", f"{t_name} {t_ip}"), accent=Theme.INFO)
 
         # Section 1: Hero Latency + Connection Quality Grade
         ui.draw_text(lcd, f"{t_name} PING", 6, 23, Theme.TEXT_MUTED, font="6x8")

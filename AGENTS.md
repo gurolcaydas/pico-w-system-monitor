@@ -47,9 +47,10 @@
 - **Garbage Collection**: Run `gc.collect()` before and after heavy network operations (DNS lookup, HTTP socket reads, mbedTLS handshakes).
 
 ## 4. Internet Quality & Ping Architecture (`PING`)
-- **Multi-Target Diagnostic**: Cycles 3 critical network checkpoints:
+- **Multi-Target Diagnostic**: Cycles 4 critical network checkpoints:
   - `CF` (Cloudflare `1.1.1.1` - Fast Anycast DNS)
   - `GOOG` (Google `8.8.8.8` - Global Backbone)
+  - `CLOUD` (`caydas.cloud` - Personal Remote Server)
   - `GW` (Local Router Gateway via `wlan.ifconfig()[2]` - Wi-Fi Link Health)
 - **Quality Grade Badges**: Faded pill badges (`GREAT` <30ms, `GOOD` <60ms, `FAIR` <120ms, `POOR` >=120ms, `LOSS`).
 - **Telemetry Metrics**:
@@ -57,7 +58,7 @@
   - Daily Min (`↓`) & Max (`↑`) arrows + Packet Loss percentage (`LOSS X%`).
   - 16-bar response time histogram chart (`ui.latency_chart`) plotting live latency pulses.
 - **Controls & Live Telemetry**:
-  - `KEY3`: Cycle target (`CF` ↔ `GOOG` ↔ `GW`).
+  - `KEY3`: Cycle target (`CF` ↔ `GOOG` ↔ `CLOUD` ↔ `GW`).
   - `KEY2`: Instant re-probe.
   - `KEY1`: Return to main menu.
   - Auto-pings every 2.5s while active to continuously update the live chart.

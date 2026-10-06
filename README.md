@@ -115,9 +115,10 @@ All interactions are strictly optimized for a 3-button navigation model:
 
 ## ⚡ 6. Internet Connection & Quality Monitor (`PING`)
 
-- **3-Target Real-Time Diagnostics**:
+- **4-Target Real-Time Diagnostics**:
   - `CF` (Cloudflare `1.1.1.1` — Anycast DNS)
   - `GOOG` (Google `8.8.8.8` — Global Backbone)
+  - `CLOUD` (`caydas.cloud` — Personal Remote Server)
   - `GW` (Local Router Gateway — Wi-Fi link health)
 - **Quality Grade System**: Borderless faded pill badges (`GREAT` <30ms, `GOOD` <60ms, `FAIR` <120ms, `POOR` >=120ms, `LOSS`).
 - **Real-Time Telemetry & Jitter**:
@@ -125,7 +126,7 @@ All interactions are strictly optimized for a 3-button navigation model:
   - Char-sized Min (`↓`) & Max (`↑`) arrows + Packet Loss rate (`LOSS X%`).
   - **16-Bar Response Time Histogram Chart**: Live pulse telemetry automatically updating every 2.5s.
 - **Hardware Controls**:
-  - `KEY3`: Cycle targets (`CF` ↔ `GOOG` ↔ `GW`).
+  - `KEY3`: Cycle targets (`CF` ↔ `GOOG` ↔ `CLOUD` ↔ `GW`).
   - `KEY2`: Send instant test probe.
   - `KEY1`: Return to main menu.
 
