@@ -80,7 +80,7 @@
 
 ## 5. YouTube Channel Tracker Architecture
 - **API**: Official YouTube Data API v3 (`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&...`) over TLS port 443 with RP2040 built-in `ssl.wrap_socket`.
-- **Query Frequency**: Automatically polls every 180 seconds (3 minutes) in the background (using 480 quota units/day out of 10,000 free units/day). KEY2 triggers manual sync on demand.
+- **Query Frequency**: Automatically polls every 600 seconds (10 minutes) in the background (using 144 quota units/day out of 10,000 free units/day). KEY2 triggers manual sync on demand.
 - **Data Extracted**: Channel Title, Subscriber Count, Cumulative Lifetime View Count, Public Video Count.
 - **Dedicated Screen (`YT`)**:
   - Section 1: Single-line channel title, hero subscriber count (`ui.draw_big`), `SUBS` badge, and video count (`VIDS`).

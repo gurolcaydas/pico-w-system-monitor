@@ -791,8 +791,8 @@ while True:
         bg_check_cursor += 1
         last_site_check_time = time.time()
 
-    # 2b. Periodic background check of YouTube stats (every 180s / 3m)
-    if wlan.isconnected() and yt_channel_id and yt_api_key and (time.time() - last_yt_check_time > 180):
+    # 2b. Periodic background check of YouTube stats (every 600s / 10m)
+    if wlan.isconnected() and yt_channel_id and yt_api_key and (time.time() - last_yt_check_time > 600):
         fetch_youtube_stats()
         last_yt_check_time = time.time()
 
@@ -1401,7 +1401,7 @@ while True:
             ui.draw_arrow_up(lcd, 48, 69, Theme.WARNING)
             ui.draw_text(lcd, f"{max_v}", 57, 69, Theme.WARNING, font="6x8")
 
-            ui.draw_right(lcd, "SYNC 3m", 69, Theme.TEXT_MUTED, margin=6, font="6x8")
+            ui.draw_right(lcd, "SYNC 10m", 69, Theme.TEXT_MUTED, margin=6, font="6x8")
 
             # Horizontal Divider Line 2
             lcd.hline(6, 80, 116, Theme.BORDER)

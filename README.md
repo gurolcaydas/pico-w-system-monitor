@@ -148,7 +148,7 @@ All interactions are strictly optimized for a 3-button navigation model:
   - Lifetime Total Views (`VIEWS`) and tracked session gain (`+X GAIN`).
   - Min & Max interval delta views with char-sized `↓` / `↑` arrow icons.
   - 16-bar genuine views histogram chart with color-coded spikes on a 1px baseline axis.
-  - Polling status (`SYNC 3m` background poll, ~480 quota units/day, well under YouTube's free 10,000 quota limit).
+  - Polling status (`SYNC 10m` background poll, ~144 quota units/day, well under YouTube's free 10,000 quota limit).
 - **Persistence**: Saved persistently to `yt_views.txt` and `youtube.txt` on flash storage.
 - **Dynamic Web Configuration**: Enter API key and channel handle directly from the browser at `http://<pico_ip>/` — instantly saves to `youtube.txt` and updates the LCD display without reflashing.
 
