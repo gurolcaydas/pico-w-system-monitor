@@ -1,0 +1,24 @@
+# Credentials and sensitive runtime files
+secrets.py
+youtube.txt
+sites.txt
+yt_views.txt
+
+# Python & Environment
+.venv/
+env/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Temporary test scripts and logs
+scratch_test.py
+*.log
+
+# IDE & OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

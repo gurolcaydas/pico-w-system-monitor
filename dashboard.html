@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pico W Akıllı İklim İstasyonu</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(18, 24, 38, 0.75);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --temp: #f97316;
+      --hum: #06b6d4;
+      --green: #10b981;
+      --purple: #a855f7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem;
+    }
+    .wrapper { width: 100%; max-width: 780px; }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .title-group h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
+    .title-group p { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
+    .badge-bar { display: flex; align-items: center; gap: 8px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .pulse-dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(1.2); } }
+    .clock-badge {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .grid-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      padding: 1.25rem 1rem;
+      border-radius: 1.2rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+    }
+    .card-temp::before { background: linear-gradient(90deg, #f97316, #fb923c); }
+    .card-hum::before { background: linear-gradient(90deg, #06b6d4, #38bdf8); }
+    .card-high::before { background: linear-gradient(90deg, #ef4444, #f97316); }
+    .card-low::before { background: linear-gradient(90deg, #3b82f6, #06b6d4); }
+    .card-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 0.4rem; }
+    .card-value { font-size: 2.2rem; font-weight: 800; line-height: 1.1; margin-bottom: 0.4rem; }
+    .val-temp { color: var(--temp); }
+    .val-hum { color: var(--hum); }
+    .unit { font-size: 1rem; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+    .card-sub { font-size: 0.8rem; color: var(--text-muted); }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: rgba(168, 85, 247, 0.15);
+      color: var(--purple);
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    .chart-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      padding: 1.25rem 1rem;
+      border-radius: 1.2rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .chart-title { font-size: 0.95rem; font-weight: 600; }
+    .chart-legend { display: flex; gap: 14px; font-size: 0.75rem; color: var(--text-muted); }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-temp { background: var(--temp); }
+    .dot-hum { background: var(--hum); }
+    .chart-container { position: relative; height: 240px; width: 100%; }
+    .api-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      padding: 1rem;
+      border-radius: 1rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .api-links { display: flex; gap: 12px; }
+    .api-links a { color: var(--hum); text-decoration: none; font-weight: 500; }
+    .api-links a:hover { text-decoration: underline; }
+    footer { text-align: center; margin-top: 1.5rem; font-size: 0.75rem; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <header>
+      <div class="title-group">
+        <h1>Pico W İklim İstasyonu</h1>
+        <p>Çift I2C OLED • DHT11 Sensör • İstanbul TSİ (UTC+3)</p>
+      </div>
+      <div class="badge-bar">
+        <div class="badge"><div class="pulse-dot"></div> Canlı</div>
+        <div class="clock-badge" id="clock">--:--:--</div>
+      </div>
+    </header>
+
+    <div class="grid-cards">
+      <div class="card card-temp">
+        <div class="card-label">İç Ortam Sıcaklığı</div>
+        <div class="card-value val-temp"><span id="temp">--</span><span class="unit">°C</span></div>
+        <div class="card-sub"><span id="temp-f">--</span> °F • <span id="comfort" class="pill">Hesaplanıyor</span></div>
+      </div>
+
+      <div class="card card-hum">
+        <div class="card-label">İç Ortam Nemi</div>
+        <div class="card-value val-hum"><span id="hum">--</span><span class="unit">%</span></div>
+        <div class="card-sub">Çiy Noktası: <span id="dew">--</span>°C</div>
+      </div>
+
+      <div class="card card-high">
+        <div class="card-label">Bugün En Yüksek</div>
+        <div class="card-value" id="max-temp">--°</div>
+        <div class="card-sub">Saat: <span id="max-time">--:--</span> • Nem: <span id="max-hum">--%</span></div>
+      </div>
+
+      <div class="card card-low">
+        <div class="card-label">Bugün En Düşük</div>
+        <div class="card-value" id="min-temp">--°</div>
+        <div class="card-sub">Saat: <span id="min-time">--:--</span> • Nem: <span id="min-hum">--%</span></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">Canlı Sıcaklık & Nem Geçmişi</div>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot dot-temp"></div> Sıcaklık (°C)</div>
+          <div class="legend-item"><div class="legend-dot dot-hum"></div> Nem (%)</div>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas id="climateChart"></canvas>
+      </div>
+    </div>
+
+    <div class="api-card">
+      <div>Veri Akışı: <strong>Pico W REST API</strong> (Her 3 saniyede otomatik yenilenir)</div>
+      <div class="api-links">
+        <a href="/api/temp" target="_blank">/api/temp</a>
+        <a href="/api/stats" target="_blank">/api/stats</a>
+        <a href="/api/history" target="_blank">/api/history</a>
+      </div>
+    </div>
+
+    <footer>
+      Pico W IoT • 18 Bilgi Ekranı Rotasyonu • Çalışma Süresi: <span id="uptime">--</span>
+    </footer>
+  </div>
+
+  <script>
+    let chart;
+    function initChart() {
+      const ctx = document.getElementById('climateChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Sıcaklık (°C)',
+              borderColor: '#f97316',
+              backgroundColor: 'rgba(249, 115, 22, 0.08)',
+              borderWidth: 2,
+              tension: 0.35,
+              fill: true,
+              pointRadius: 2,
+              data: []
+            },
+            {
+              label: 'Nem (%)',
+              borderColor: '#06b6d4',
+              backgroundColor: 'rgba(6, 182, 212, 0.08)',
+              borderWidth: 2,
+              tension: 0.35,
+              fill: true,
+              pointRadius: 2,
+              data: []
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.04)' },
+              ticks: { color: '#64748b', maxTicksLimit: 10, font: { size: 10 } }
+            },
+            y: {
+              grid: { color: 'rgba(255, 255, 255, 0.04)' },
+              ticks: { color: '#64748b', font: { size: 10 } }
+            }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    async function updateStats() {
+      try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+        
+        document.getElementById('temp').innerText = data.current.temperature_c;
+        document.getElementById('temp-f').innerText = data.current.temperature_f;
+        document.getElementById('hum').innerText = data.current.humidity_pct;
+        document.getElementById('comfort').innerText = data.comfort;
+        document.getElementById('dew').innerText = data.dew_point_c;
+        document.getElementById('clock').innerText = data.local_time || '--:--:--';
+        
+        if (data.today) {
+          document.getElementById('max-temp').innerText = (data.today.max_temp !== -999 ? data.today.max_temp : '--') + '°';
+          document.getElementById('max-time').innerText = data.today.max_temp_time || '--:--';
+          document.getElementById('max-hum').innerText = (data.today.max_hum !== -999 ? data.today.max_hum : '--') + '%';
+          document.getElementById('min-temp').innerText = (data.today.min_temp !== 999 ? data.today.min_temp : '--') + '°';
+          document.getElementById('min-time').innerText = data.today.min_temp_time || '--:--';
+          document.getElementById('min-hum').innerText = (data.today.min_hum !== 999 ? data.today.min_hum : '--') + '%';
+        }
+
+        if (data.uptime_sec !== undefined) {
+          const s = data.uptime_sec;
+          const h = Math.floor(s / 3600);
+          const m = Math.floor((s % 3600) / 60);
+          const sec = s % 60;
+          document.getElementById('uptime').innerText = `${h} sa ${m} dk ${sec} sn`;
+        }
+      } catch (e) {
+        console.error("Stats getirme hatasi:", e);
+      }
+    }
+
+    async function updateHistory() {
+      try {
+        const res = await fetch('/api/history');
+        const list = await res.json();
+        if (chart && list && list.length) {
+          chart.data.labels = list.map(item => item.t);
+          chart.data.datasets[0].data = list.map(item => item.temp);
+          chart.data.datasets[1].data = list.map(item => item.hum);
+          chart.update();
+        }
+      } catch (e) {
+        console.error("Gecmis verisi hatasi:", e);
+      }
+    }
+
+    initChart();
+    updateStats();
+    updateHistory();
+    setInterval(updateStats, 3000);
+    setInterval(updateHistory, 6000);
+  </script>
+</body>
+</html>
