@@ -15,8 +15,9 @@
   - **No Boxes / Enclosing Cards**: NEVER use bounding card boxes (`ui.card`, `lcd.rect`) across any screen in the UI.
   - **Faded Pill Badges (Zero Border Boxes)**: Badges (`ui.badge`) render as borderless, subtle rounded pills with a soft, faded dark-tint background (`get_badge_colors`) and bright, high-contrast typography. NEVER draw hard bounding border boxes (`lcd.rect`) around badges (e.g. `dB` in Wi-Fi, `PORT 80`, `133MHz`, `PASS`).
   - **1px Horizontal Dividers**: Separate sections and rows using clean 1-pixel horizontal lines (`lcd.hline`) in `Theme.BORDER`.
-  - **Main Menu**: 6-category list with horizontal lines separating each row (`DEV`, `PING`, `SITES`, `YT`, `WX`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 21`, `row_h = 17`).
-  - **Combined DEV Subsystem**: Like `SITES`, `DEV` features a dedicated Landing Page (View A) with selectable subpages (`CORE`, `NET`, `MEM`), where KEY2 enters the full detail view (View B) and KEY1 returns to the landing page.
+  - **Main Menu**: 8-category list with horizontal lines separating each row (`DEV`, `PING`, `SITES`, `YT`, `WX`, `MOON`, `GAMES`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 20`, `row_h = 13`).
+  - **Games Subsystem (`GAMES`)**: Dedicated Games Hub Menu (`View A`) listing games (`21 BLACKJACK`, `GALAXY QUEST`), where `KEY2` launches selected game (`View B`) and `KEY1` returns to Games Hub.
+  - **Combined DEV Subsystem**: Like `SITES` and `GAMES`, `DEV` features a dedicated Landing Page (View A) with selectable subpages (`CORE`, `NET`, `MEM`), where KEY2 enters the full detail view (View B) and KEY1 returns to the landing page.
   - **Detail Screens (DEV Subpages, Ping, Sites, YT, WX, Web)**: Divided into clean sections by 1px horizontal lines on a unified dark canvas.
   - **Progress Bars**: Sleek track lines without outer border boxes.
 - **Canvas Budget (128×128 px)**:
@@ -104,15 +105,55 @@
   - Section 3: 16-bar temperature trend chart (`latency_chart`) plotting recent readings.
 - **Web UI Management**: Live weather card on port 80 displaying detected city, temperature, humidity, wind, and re-sync button.
 
-## 7. Web Server & Persistence
+## 7. Games Subsystem Architecture (`GAMES`)
+- **Extensible Games Hub (View A)**:
+  - Header with `GAMES` and position badge (e.g. `1/7`).
+  - 4-item scroll window with 1px horizontal dividers:
+    - `21 BLACKJACK` (`blackjack.py`): Card game with chips badge (`$100`).
+    - `GALAXY QUEST` (`galaxy.py`): Real-time space shooter with high score badge (`HI:X`).
+    - `CYBER COPTER` (`copter.py`): Procedural cave runner with thrust & missiles (`HI:X`).
+    - `NEON VIPER` (`viper.py`): 2-button relative-steer cyberpunk snake (`HI:X`).
+    - `CYBER BRICK` (`brick.py`): Arkanoid / Breakout brick breaker (`HI:X`).
+    - `LUNAR LANDER` (`lander.py`): Vector gravity descent simulator with landing pads (`HI:X`).
+    - `PICO PONG` (`pong.py`): Player vs Pico CPU AI tennis match (`W:X`).
+  - Navigation: `KEY3` cycles down/scrolls list, `KEY2` launches selected game, `KEY1` exits to SYS MENU.
+- **Controls Across Games (View B)**:
+  - `KEY1`: Always exits back to the Games Hub Menu.
+  - In 21: `KEY3` = Hit, `KEY2` = Stand / Deal.
+  - In Galaxy Quest: `KEY3` = Corridor lane, `KEY2` = Torpedo / Restart.
+  - In Cyber Copter: `KEY3` = Thrust / Ascend, `KEY2` = Missile / Restart.
+  - In Neon Viper: `KEY3` = Turn 90° Left, `KEY2` = Turn 90° Right / Restart.
+  - In Cyber Brick: `KEY3` = Paddle Left, `KEY2` = Paddle Right / Restart.
+  - In Lunar Lander: `KEY3` = Main Thruster, `KEY2` = RCS Attitude Tilt / Next Mission / Restart.
+  - In Pico Pong: `KEY3` = Paddle Up, `KEY2` = Paddle Down / Restart.
+
+## 8. Color Logo & Screensaver Architecture (`screensaver.py`)
+- **Vibrant Multi-Color Logo**:
+  - Pure vector graphics rendering of the official Raspberry Pi Pico W emblem without external bitmaps:
+    - Upper emerald leaf cluster with highlights (`C_LEAF_HI`) and sepal collar.
+    - 14 multi-toned ruby berry drupelets with 3D specular highlight and shadow dots.
+    - Central RP2040 microcontroller silicon core with golden circuit pins and cyan glowing core.
+    - Crisp high-contrast typography badge (`PICO W`).
+- **Screensaver Bouncing Dynamics**:
+  - Automatically activates after **1 minute (60 seconds)** of button inactivity.
+  - Classic retro DVD-style smooth bouncing physics (`vx = 0.82`, `vy = 0.62`) avoiding LCD static image persistence.
+  - Dynamic wall bounce triggers: cycles accent colors (Cyan, Emerald, Ruby, Amber, Violet) and spawns 5 sparkle particles.
+  - Multi-plane background cosmic star dust drifting smoothly in deep space.
+  - Subtle bottom ambient telemetry: system uptime and RP2040 core temperature.
+- **Zero-Action Instant Wake**:
+  - Pressing any key (`KEY3`, `KEY2`, or `KEY1`) wakes up the screen immediately.
+  - The wake-up button press is consumed cleanly so it never triggers an accidental menu navigation or game action.
+  - Background web server on port 80 and network probes run uninterrupted during screensaver.
+
+## 9. Web Server & Persistence
 - Non-blocking socket listener on Port 80 (`s.setblocking(False)`), integrated into the main loop without blocking UI rendering or button response.
 - Post/Redirect/Get pattern (HTTP 303 to `/`) for all POST/GET mutations.
-- Monitored sites persistently saved to `sites.txt` and YouTube config saved to `youtube.txt`.
+- Monitored sites persistently saved to `sites.txt`, YouTube config in `youtube.txt`, high scores in `gq_hiscore.txt`.
 
-## 7. Flashing & Deployment
+## 10. Flashing & Deployment
 - Automated deployment via `upload_to_pico.py` on `COM3` at 115200 baud over MicroPython Raw REPL.
 
-## 8. 🧠 Note for Next AI: Deep Dive into `picoui.py`
+## 11. 🧠 Note for Next AI: Deep Dive into `picoui.py`
 Dear future AI agent, when you read or modify `picoui.py`, keep these crucial architecture details in mind:
 
 1. **The RGB565 Little-Endian Byte-Swap Rule**:

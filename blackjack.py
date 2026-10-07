@@ -10,6 +10,21 @@ from picoui import Theme, color565
 
 RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 SUITS = ["S", "H", "D", "C"]  # Spades, Hearts, Diamonds, Clubs
+CHIPS_FILE = "bj_chips.txt"
+
+def load_chips():
+    try:
+        with open(CHIPS_FILE, "r") as f:
+            return int(f.read().strip())
+    except Exception:
+        return 100
+
+def save_chips(chips):
+    try:
+        with open(CHIPS_FILE, "w") as f:
+            f.write(str(int(chips)))
+    except Exception:
+        pass
 
 def calculate_score(hand):
     val = 0
@@ -37,7 +52,7 @@ class BlackjackGame:
         self.wins = 0
         self.losses = 0
         self.pushes = 0
-        self.chips = 100
+        self.chips = load_chips()
         self.bet = 10
         self.reset_deck()
         self.deal()
@@ -71,6 +86,7 @@ class BlackjackGame:
                 self.state = "BLACKJACK"
                 self.wins += 1
                 self.chips += int(self.bet * 1.5)
+                save_chips(self.chips)
 
     def hit(self):
         if self.state != "PLAYING":
@@ -81,6 +97,7 @@ class BlackjackGame:
             self.state = "BUST"
             self.losses += 1
             self.chips = max(0, self.chips - self.bet)
+            save_chips(self.chips)
         elif p == 21:
             self.stand()
 
@@ -95,14 +112,17 @@ class BlackjackGame:
             self.state = "WIN"
             self.wins += 1
             self.chips += self.bet
+            save_chips(self.chips)
         elif p > d:
             self.state = "WIN"
             self.wins += 1
             self.chips += self.bet
+            save_chips(self.chips)
         elif p < d:
             self.state = "LOSE"
             self.losses += 1
             self.chips = max(0, self.chips - self.bet)
+            save_chips(self.chips)
         else:
             self.state = "PUSH"
             self.pushes += 1

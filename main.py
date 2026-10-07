@@ -34,6 +34,7 @@ except Exception:
     WIFI_PASSWORD = "YOUR_WIFI_PASSWORD"
 
 # 1. Hardware Init
+gc.collect()
 lcd = LCD_1inch44(brightness=85)
 
 # 2. Start Wi-Fi Connection in Background
@@ -279,9 +280,69 @@ if wlan.isconnected() and monitored_sites:
 import weather
 import youtube_service as yt_svc
 import moon
-import blackjack
 
-bj_game = blackjack.BlackjackGame()
+def get_hiscore_val(fn, prefix="", default="0"):
+    try:
+        with open(fn, "r") as f:
+            return f"{prefix}{f.read().strip()}"
+    except Exception:
+        return f"{prefix}{default}"
+
+GAMES_LIST = [
+    {
+        "id": "21",
+        "name": "21 BLACKJACK",
+        "badge": lambda: (get_hiscore_val("bj_chips.txt", prefix="$", default="100"), "success"),
+        "mod": "blackjack",
+        "cls": "BlackjackGame",
+    },
+    {
+        "id": "galaxy",
+        "name": "GALAXY QUEST",
+        "badge": lambda: (get_hiscore_val("gq_hiscore.txt", prefix="HI:", default="0"), "info"),
+        "mod": "galaxy",
+        "cls": "GalaxyQuestGame",
+    },
+    {
+        "id": "copter",
+        "name": "CYBER COPTER",
+        "badge": lambda: (get_hiscore_val("copter_hiscore.txt", prefix="HI:", default="0"), "warning"),
+        "mod": "copter",
+        "cls": "CyberCopterGame",
+    },
+    {
+        "id": "viper",
+        "name": "NEON VIPER",
+        "badge": lambda: (get_hiscore_val("viper_hiscore.txt", prefix="HI:", default="0"), "success"),
+        "mod": "viper",
+        "cls": "NeonViperGame",
+    },
+    {
+        "id": "brick",
+        "name": "CYBER BRICK",
+        "badge": lambda: (get_hiscore_val("brick_hiscore.txt", prefix="HI:", default="0"), "info"),
+        "mod": "brick",
+        "cls": "CyberBrickGame",
+    },
+    {
+        "id": "lander",
+        "name": "LUNAR LANDER",
+        "badge": lambda: (get_hiscore_val("lander_hiscore.txt", prefix="HI:", default="0"), "warning"),
+        "mod": "lander",
+        "cls": "LunarLanderGame",
+    },
+    {
+        "id": "pong",
+        "name": "PICO PONG",
+        "badge": lambda: (get_hiscore_val("pong_hiscore.txt", prefix="W:", default="0"), "primary"),
+        "mod": "pong",
+        "cls": "PicoPongGame",
+    },
+]
+
+active_game_mod = None
+active_game_obj = None
+saver = None
 
 # Alias shared structures and helpers
 yt_data = yt_svc.yt_data
@@ -604,10 +665,16 @@ last_k3 = False
 last_k2 = False
 last_k1 = False
 
-screen_names = ["device", "ping", "cloud", "yt", "wx", "moon", "game", "about"]
+screen_names = ["device", "ping", "cloud", "yt", "wx", "moon", "games", "about"]
 
 dev_cursor = 0        # 0..2 ("CORE", "NET", "MEM")
 dev_detail_view = False
+
+games_cursor = 0      # 0..len(GAMES_LIST)-1
+active_game = None    # None: Games Hub Menu, "21": Blackjack, "galaxy": Galaxy Quest
+
+screensaver_active = False
+last_input_time = time.time()
 
 while True:
     # 1. Non-blocking web server poll
@@ -652,6 +719,18 @@ while True:
     k1 = keys["KEY1"] and not last_k1
     last_k3, last_k2, last_k1 = keys["KEY3"], keys["KEY2"], keys["KEY1"]
 
+    if k1 or k2 or k3:
+        last_input_time = time.time()
+        if screensaver_active:
+            screensaver_active = False
+            saver = None
+            gc.collect()
+            # Swallow wake-up button press so it does not trigger any action
+            k1 = k2 = k3 = False
+
+    if not screensaver_active and (time.time() - last_input_time >= 60):
+        screensaver_active = True
+
     # ==========================================================================
     # INPUT ROUTING
     # ==========================================================================
@@ -690,6 +769,8 @@ while True:
                 elif screen == "wx":
                     if weather_data["status"] != "OK" or time.time() - weather_data["last_sync"] > 900:
                         fetch_weather()
+                elif screen == "games":
+                    active_game = None
         else:
             if screen == "device":
                 if not dev_detail_view:
@@ -780,20 +861,89 @@ while True:
                     screen = "menu"
                 elif k2:
                     fetch_weather()
-            elif screen == "game":
-                if k1:
-                    screen = "menu"
-                elif bj_game.state == "PLAYING":
-                    if k3:
-                        bj_game.hit()
+            elif screen == "games":
+                if active_game is None:
+                    # In GAMES SELECTION MENU
+                    if k1:
+                        screen = "menu"
+                    elif k3:
+                        games_cursor = (games_cursor + 1) % len(GAMES_LIST)
                     elif k2:
-                        bj_game.stand()
+                        gm = GAMES_LIST[games_cursor]
+                        active_game = gm["id"]
+                        gc.collect()
+                        active_game_mod = __import__(gm["mod"])
+                        active_game_obj = getattr(active_game_mod, gm["cls"])()
                 else:
-                    if k2 or k3:
-                        bj_game.deal()
+                    # In Active Game (KEY1 exits back to Games Hub)
+                    if k1:
+                        active_game = None
+                        active_game_obj = None
+                        active_game_mod = None
+                        gc.collect()
+                    elif active_game == "21":
+                        if active_game_obj.state == "PLAYING":
+                            if k3: active_game_obj.hit()
+                            elif k2: active_game_obj.stand()
+                        else:
+                            if k2 or k3: active_game_obj.deal()
+                    elif active_game == "galaxy":
+                        if active_game_obj.state == "PLAYING":
+                            if k3: active_game_obj.move_ship()
+                            if k2: active_game_obj.fire()
+                        else:
+                            if k2 or k3: active_game_obj.reset()
+                    elif active_game == "copter":
+                        if active_game_obj.state == "PLAYING":
+                            if k3: active_game_obj.thrust()
+                            if k2: active_game_obj.fire()
+                        else:
+                            if k2 or k3: active_game_obj.reset()
+                    elif active_game == "viper":
+                        if active_game_obj.state == "PLAYING":
+                            if k3: active_game_obj.turn_left()
+                            elif k2: active_game_obj.turn_right()
+                        else:
+                            if k2 or k3: active_game_obj.reset()
+                    elif active_game == "brick":
+                        if active_game_obj.state == "PLAYING":
+                            if k3: active_game_obj.move_left()
+                            elif k2: active_game_obj.move_right()
+                        else:
+                            if k2 or k3: active_game_obj.reset()
+                    elif active_game == "lander":
+                        if active_game_obj.state == "PLAYING":
+                            if k3: active_game_obj.thrust()
+                            if k2: active_game_obj.toggle_tilt()
+                        elif active_game_obj.state == "LANDED":
+                            if k2 or k3: active_game_obj.next_mission()
+                        else:
+                            if k2 or k3: active_game_obj.reset()
+                    elif active_game == "pong":
+                        if active_game_obj.state == "PLAYING":
+                            if k3: active_game_obj.move_up()
+                            elif k2: active_game_obj.move_down()
+                        else:
+                            if k2 or k3: active_game_obj.reset()
             else:
                 if k1:
                     screen = "menu"
+
+    # ==========================================================================
+    # SCREENSAVER DISPATCH (1-Min Inactivity Auto-Lock)
+    # ==========================================================================
+    if screensaver_active:
+        if saver is None:
+            gc.collect()
+            import screensaver
+            saver = screensaver.Screensaver()
+        uptime = int(time.time() - boot_time)
+        temp = get_internal_temp()
+        saver.update()
+        saver.render(lcd, uptime_s=uptime, temp_c=temp)
+        lcd.show()
+        time.sleep_ms(30)
+        continue
 
     # ==========================================================================
     # RENDERING ENGINE
@@ -834,7 +984,7 @@ while True:
         m_info = moon.get_moon_info()
         moon_val = f"FULL {int(round(m_info['days_to_full']))}d"
 
-        game_val = f"${bj_game.chips}"
+        games_val = f"{len(GAMES_LIST)} GMS"
 
         about_val = "PORT 80" if wlan.isconnected() else "PICO"
 
@@ -845,7 +995,7 @@ while True:
             ("YT", yt_val, yt_col),
             ("WX", wx_val, wx_col),
             ("MOON", moon_val, Theme.INFO),
-            ("21", game_val, Theme.SUCCESS),
+            ("GAMES", games_val, Theme.SUCCESS),
             ("WEB", about_val, Theme.TEXT_MUTED),
         ]
 
@@ -1372,10 +1522,37 @@ while True:
         ui.draw_right(lcd, "NEW", 118, Theme.TEXT_DARK, margin=6, font="6x8")
 
     # --------------------------------------------------------------------------
-    # SCREEN 4.8: 21 BLACKJACK GAME
+    # SCREEN 4.8: GAMES SUBSYSTEM (Menu & Game Engines)
     # --------------------------------------------------------------------------
-    elif screen == "game":
-        blackjack.render_game_screen(lcd, bj_game)
+    elif screen == "games":
+        if active_game is None:
+            # Games Selection Menu (Zero Boxes, 1px Horizontal Dividers, Scroll Window)
+            ui.header(lcd, "GAMES", right_badge=f"{games_cursor + 1}/{len(GAMES_LIST)}", accent=Theme.SUCCESS)
+            start_y = 24
+            row_h = 23
+            vis_count = 4
+            top_idx = max(0, min(games_cursor - 1, len(GAMES_LIST) - vis_count))
+            for i in range(vis_count):
+                idx = top_idx + i
+                if idx >= len(GAMES_LIST):
+                    break
+                gm = GAMES_LIST[idx]
+                cy = start_y + i * row_h
+                is_sel = (games_cursor == idx)
+                badge_text, badge_var = gm["badge"]()
+                if is_sel:
+                    ui.draw_text(lcd, ">", 4, cy + 3, Theme.SUCCESS, font="6x8")
+                    ui.draw_text(lcd, gm["name"], 14, cy + 3, Theme.TEXT, font="6x8")
+                    ui.badge(lcd, 122, cy + 1, badge_text, variant=badge_var, align_right=True)
+                    lcd.hline(6, cy + 19, 116, Theme.SUCCESS)
+                else:
+                    ui.draw_text(lcd, gm["name"], 14, cy + 3, Theme.TEXT_MUTED, font="6x8")
+                    ui.badge(lcd, 122, cy + 1, badge_text, variant="default", align_right=True)
+                    lcd.hline(6, cy + 19, 116, Theme.BORDER)
+        elif active_game and active_game_mod and active_game_obj:
+            if hasattr(active_game_obj, "update"):
+                active_game_obj.update()
+            active_game_mod.render_game_screen(lcd, active_game_obj)
 
     # --------------------------------------------------------------------------
     # SCREEN 4: ABOUT / WEB INFO (Ultra-Minimalist, No Boxes)

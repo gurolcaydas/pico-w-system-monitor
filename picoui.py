@@ -475,22 +475,31 @@ def draw_moon_disk(lcd, cx: int, cy: int, r: int, phase: float):
             lcd.pixel(cx, y, c_border)
             continue
 
-        x_term = int(round(w * cos_t))
-
-        # Dark silhouette baseline
+        # Dark silhouette baseline of the lunar sphere
         lcd.hline(cx - w, y, 2 * w + 1, c_dark)
         lcd.pixel(cx - w, y, c_border)
         lcd.pixel(cx + w, y, c_border)
 
-        # Lit area
-        if phase <= 0.5:
-            # Waxing: lit on the right side from x_term to +w
+        # Pure New Moon (no illuminated crescent)
+        if phase < 0.02 or phase > 0.98:
+            continue
+
+        # Pure Full Moon (completely illuminated disk)
+        if 0.485 <= phase <= 0.515:
+            lcd.hline(cx - w, y, 2 * w + 1, c_lit)
+            continue
+
+        # Terminator curve calculation:
+        if phase < 0.5:
+            # Waxing: lit on the right limb from x_term to +w
+            x_term = int(round(w * cos_t))
             x_start = max(-w, min(w, x_term))
             lit_w = w - x_start + 1
             if lit_w > 0:
                 lcd.hline(cx + x_start, y, lit_w, c_lit)
         else:
-            # Waning: lit on the left side from -w to x_term
+            # Waning: lit on the left limb from -w to x_term (-w * cos_t)
+            x_term = int(round(-w * cos_t))
             x_end = max(-w, min(w, x_term))
             lit_w = x_end - (-w) + 1
             if lit_w > 0:

@@ -4,6 +4,7 @@ youtube.txt
 sites.txt
 yt_views.txt
 weather.txt
+*_hiscore.txt
 
 # Python & Environment
 .venv/
