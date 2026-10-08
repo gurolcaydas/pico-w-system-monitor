@@ -119,9 +119,20 @@
   - **View A (Device List)**: Minimalist scrollable list of discovered devices with IP address, role pill badge (`RTR`, `PI`, `NAS`, `WEB`, `DEV`), latency in ms, and 1px horizontal dividers.
   - **View B (Device Detail)**: Host IP, online status badge, role classification, detected open service badges (`80:HTTP`, `22:SSH`, `53:DNS`), and response latency.
 - **Hardware Controls**:
-  - View A: `KEY3` moves selection / scrolls list, `KEY2` enters Detail View (or triggers full scan if empty), `KEY1` returns to SYS MENU.
+  - View A:
+    - Item 0 is `[SCAN ALL LAN]` (badge `SCAN`/`BUSY`): `KEY2` starts full subnet sweep.
+    - Items 1..N: `KEY3` moves selection / scrolls list, `KEY2` enters Detail View, `KEY1` returns to SYS MENU.
   - View B: `KEY3` cycles devices, `KEY2` re-probes current device completely, `KEY1` returns to View A list.
 - **Web UI Management**: Live LAN Devices card on port 80 displaying discovered hosts, open services, latency, and "Scan Local LAN" trigger button.
+
+### 7.1. Network Subsystem Refresh (`NET`)
+- On `DEV` $\rightarrow$ `NET` subpage (View B):
+  - `KEY2` triggers immediate Network Refresh:
+    - Queries fresh Wi-Fi RSSI signal from CYW43.
+    - Sends live ping to router gateway to verify connectivity and display round-trip latency (`GW: Xms`).
+    - Verifies port 80 web server listener.
+    - Flashes temporary high-contrast `REFRESH` header badge.
+
 
 ## 8. Games Subsystem Architecture (`GAMES`)
 - **Extensible Games Hub (View A)**:

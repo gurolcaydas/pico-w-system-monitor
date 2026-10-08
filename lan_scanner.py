@@ -219,12 +219,8 @@ class LanScanner:
         badge = f"SCAN .{self.probing_ip.split('.')[-1]}" if (self.is_scanning and self.probing_ip) else f"{len(self.devices)} DEV"
         ui.header(lcd, "LAN", right_badge=badge, accent=Theme.INFO)
 
-        if not self.devices:
-            ui.draw_centered(lcd, "SCANNING LAN...", 55, Theme.INFO if self.is_scanning else Theme.TEXT_MUTED, font="6x8")
-            return
-
         vis = 8
-        tot = len(self.devices)
+        tot = 1 + len(self.devices)
         cur = cur_idx % tot if tot > 0 else 0
         top = max(0, min(cur - 3, tot - vis))
 
@@ -232,16 +228,23 @@ class LanScanner:
             idx = top + i
             if idx >= tot:
                 break
-            d = self.devices[idx]
             cy = 20 + i * 13
             is_sel = (cur == idx)
-            code, var = self.get_role_badge_info(d["role"])
             col = Theme.INFO if is_sel else Theme.TEXT
 
             if is_sel:
                 ui.draw_text(lcd, ">", 2, cy + 2, Theme.INFO, font="6x8")
-            ui.draw_text(lcd, d["ip"], 8, cy + 2, col, font="6x8")
-            ui.badge(lcd, 126, cy + 1, code, variant=var, align_right=True)
+
+            if idx == 0:
+                scan_lbl = "SCANNING..." if self.is_scanning else "[SCAN ALL LAN]"
+                ui.draw_text(lcd, scan_lbl, 8, cy + 2, Theme.PRIMARY if is_sel else Theme.INFO, font="6x8")
+                ui.badge(lcd, 126, cy + 1, "BUSY" if self.is_scanning else "SCAN", variant="warning" if self.is_scanning else "primary", align_right=True)
+            else:
+                d = self.devices[idx - 1]
+                code, var = self.get_role_badge_info(d["role"])
+                ui.draw_text(lcd, d["ip"], 8, cy + 2, col, font="6x8")
+                ui.badge(lcd, 126, cy + 1, code, variant=var, align_right=True)
+
             lcd.hline(2, cy + 12, 124, Theme.INFO if is_sel else Theme.BORDER)
 
     def render_detail_view(self, lcd, cur_idx):

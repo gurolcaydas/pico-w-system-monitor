@@ -628,6 +628,8 @@ lan_detail_view = False
 
 dev_cursor = 0        # 0..2 ("CORE", "NET", "MEM")
 dev_detail_view = False
+net_refresh_time = 0
+net_gw_ms = None
 
 games_cursor = 0      # 0..len(GAMES_LIST)-1
 active_game = None    # None: Games Hub Menu, "21": Blackjack, "galaxy": Galaxy Quest
@@ -761,7 +763,24 @@ while True:
                     elif k3:
                         dev_cursor = (dev_cursor + 1) % 3
                     elif k2:
-                        if dev_cursor == 2:
+                        if dev_cursor == 1:
+                            # REFRESH NET SCREEN
+                            net_refresh_time = time.time()
+                            if not wlan.isconnected():
+                                try:
+                                    wlan.connect(WIFI_SSID, WIFI_PASSWORD)
+                                except Exception:
+                                    pass
+                            else:
+                                try:
+                                    gw = wlan.ifconfig()[2]
+                                    ms, _ = ping_host(gw, timeout_s=0.5)
+                                    net_gw_ms = ms
+                                except Exception:
+                                    pass
+                            if srv is None:
+                                init_web_server()
+                        elif dev_cursor == 2:
                             gc.collect()
             elif screen == "ping":
                 if not ping_detail_view:
@@ -802,26 +821,27 @@ while True:
                         ping_status = st_msg
                         last_live_ping_time = time.time()
             elif screen == "lan":
+                tot_items = 1 + len(lan_svc.devices)
                 if not lan_detail_view:
                     if k1:
                         screen = "menu"
                     elif k3:
-                        if lan_svc.devices:
-                            lan_cursor = (lan_cursor + 1) % len(lan_svc.devices)
+                        lan_cursor = (lan_cursor + 1) % tot_items
                     elif k2:
-                        if lan_svc.devices:
-                            lan_detail_view = True
-                        else:
+                        if lan_cursor == 0:
                             lan_svc.start_scan(full=True)
+                        else:
+                            lan_detail_view = True
                 else:
                     if k1:
                         lan_detail_view = False
                     elif k3:
                         if lan_svc.devices:
-                            lan_cursor = (lan_cursor + 1) % len(lan_svc.devices)
+                            dev_idx = (lan_cursor - 1 + 1) % len(lan_svc.devices)
+                            lan_cursor = dev_idx + 1
                     elif k2:
                         if lan_svc.devices:
-                            cur_d = lan_svc.devices[lan_cursor % len(lan_svc.devices)]
+                            cur_d = lan_svc.devices[(lan_cursor - 1) % len(lan_svc.devices)]
                             _, role, p, lat = lan_svc.probe_host_full(cur_d["ip"])
                             cur_d["role"] = role
                             cur_d["ports"] = p
@@ -1105,7 +1125,13 @@ while True:
                 # SUBPAGE 1: NETWORK (Wi-Fi / Sockets / IP)
                 # --------------------------------------------------------------
                 is_conn = wlan.isconnected()
-                ui.header(lcd, "NET", right_badge="ONLINE" if is_conn else "OFFLINE", accent=Theme.INFO)
+                if time.time() - net_refresh_time < 1.5:
+                    hdr_badge = "REFRESH"
+                    hdr_accent = Theme.SUCCESS
+                else:
+                    hdr_badge = "ONLINE" if is_conn else "OFFLINE"
+                    hdr_accent = Theme.INFO
+                ui.header(lcd, "NET", right_badge=hdr_badge, accent=hdr_accent)
 
                 # Section 1: Wi-Fi Status
                 ui.draw_text(lcd, "WIFI", 6, 24, Theme.TEXT_MUTED, font="6x8")
@@ -1117,7 +1143,12 @@ while True:
                 if is_conn:
                     ip = wlan.ifconfig()[0]
                     ui.draw_text(lcd, ip, 6, 38, Theme.TEXT, font="6x8")
-                    ui.draw_text(lcd, f"SSID: {WIFI_SSID[:14]}", 6, 48, Theme.TEXT_DARK, font="6x8")
+                    ssid_disp = WIFI_SSID[:14]
+                    if net_gw_ms is not None:
+                        ui.draw_text(lcd, f"GW: {net_gw_ms}ms", 6, 48, Theme.SUCCESS if net_gw_ms < 30 else Theme.WARNING, font="6x8")
+                        ui.draw_right(lcd, ssid_disp, 48, Theme.TEXT_DARK, margin=6, font="6x8")
+                    else:
+                        ui.draw_text(lcd, f"SSID: {ssid_disp}", 6, 48, Theme.TEXT_DARK, font="6x8")
                 else:
                     ui.draw_text(lcd, "Conn...", 6, 40, Theme.WARNING, font="6x8")
 
@@ -1276,7 +1307,8 @@ while True:
         if not lan_detail_view:
             lan_svc.render_list_view(lcd, lan_cursor)
         else:
-            lan_svc.render_detail_view(lcd, lan_cursor)
+            dev_idx = max(0, lan_cursor - 1)
+            lan_svc.render_detail_view(lcd, dev_idx)
 
     # --------------------------------------------------------------------------
     # SCREEN 4: MONITORED WEBSITES (Ultra-Minimalist, No Boxes)
