@@ -15,7 +15,8 @@
   - **No Boxes / Enclosing Cards**: NEVER use bounding card boxes (`ui.card`, `lcd.rect`) across any screen in the UI.
   - **Faded Pill Badges (Zero Border Boxes)**: Badges (`ui.badge`) render as borderless, subtle rounded pills with a soft, faded dark-tint background (`get_badge_colors`) and bright, high-contrast typography. NEVER draw hard bounding border boxes (`lcd.rect`) around badges (e.g. `dB` in Wi-Fi, `PORT 80`, `133MHz`, `PASS`).
   - **1px Horizontal Dividers**: Separate sections and rows using clean 1-pixel horizontal lines (`lcd.hline`) in `Theme.BORDER`.
-  - **Main Menu**: 8-category list with horizontal lines separating each row (`DEV`, `PING`, `SITES`, `YT`, `WX`, `MOON`, `GAMES`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 20`, `row_h = 13`).
+  - **Main Menu**: 9-category list with 8-item scroll window separated by 1px horizontal lines (`DEV`, `PING`, `LAN`, `SITES`, `YT`, `WX`, `MOON`, `GAMES`, `WEB`), active row indicated by `>` cursor and highlighted accent line (`start_y = 20`, `row_h = 13`).
+  - **LAN Subsystem (`LAN`)**: Dedicated Local Network Explorer with View A (scrollable device list with IP, role badge, latency) and View B (device detail with open port badges, TCP service classification, re-probe action).
   - **Games Subsystem (`GAMES`)**: Dedicated Games Hub Menu (`View A`) listing games (`21 BLACKJACK`, `GALAXY QUEST`), where `KEY2` launches selected game (`View B`) and `KEY1` returns to Games Hub.
   - **Combined DEV Subsystem**: Like `SITES` and `GAMES`, `DEV` features a dedicated Landing Page (View A) with selectable subpages (`CORE`, `NET`, `MEM`), where KEY2 enters the full detail view (View B) and KEY1 returns to the landing page.
   - **Detail Screens (DEV Subpages, Ping, Sites, YT, WX, Web)**: Divided into clean sections by 1px horizontal lines on a unified dark canvas.
@@ -105,7 +106,24 @@
   - Section 3: 16-bar temperature trend chart (`latency_chart`) plotting recent readings.
 - **Web UI Management**: Live weather card on port 80 displaying detected city, temperature, humidity, wind, and re-sync button.
 
-## 7. Games Subsystem Architecture (`GAMES`)
+## 7. LAN Device & Service Explorer Architecture (`LAN`)
+- **Discovery Engine (`lan_scanner.py`)**:
+  - Automatically interrogates local subnet (e.g. `192.168.1.0/24`) determined via `wlan.ifconfig()`.
+  - Non-blocking stepped TCP connect probes with low timeout (50ms) to detect active devices and signature service ports:
+    - `80`: HTTP, `443`: HTTPS, `22`: SSH, `53`: DNS, `445`: SMB, `1883`: MQTT, `8123`: Home Assistant, `8080`: Alt Web, `3000`: Node/Dev, `5000`: UPnP, `3389`: RDP.
+    - Active host detection via TCP SYN-ACK (`OPEN`) or TCP RST (`ECONNREFUSED` / Errno 111).
+  - Priority scan ordering: Gateway (`.1`), Pico itself, common static blocks (`.2`..`.40`), and DHCP blocks (`.50`..`.75`, `.100`..`.135`).
+  - Automatic role classification: `ROUTER`, `THIS PICO`, `HASS/IOT`, `DNS/PI`, `NAS/PC`, `LINUX/PI`, `WEB SRV`, `APP SRV`, `NODE`.
+  - Bounded storage (max 16 hosts) persistently saved to `lan_devices.txt`.
+- **Dedicated Screen (`LAN`)**:
+  - **View A (Device List)**: Minimalist scrollable list of discovered devices with IP address, role pill badge (`RTR`, `PI`, `NAS`, `WEB`, `DEV`), latency in ms, and 1px horizontal dividers.
+  - **View B (Device Detail)**: Host IP, online status badge, role classification, detected open service badges (`80:HTTP`, `22:SSH`, `53:DNS`), and response latency.
+- **Hardware Controls**:
+  - View A: `KEY3` moves selection / scrolls list, `KEY2` enters Detail View (or triggers full scan if empty), `KEY1` returns to SYS MENU.
+  - View B: `KEY3` cycles devices, `KEY2` re-probes current device completely, `KEY1` returns to View A list.
+- **Web UI Management**: Live LAN Devices card on port 80 displaying discovered hosts, open services, latency, and "Scan Local LAN" trigger button.
+
+## 8. Games Subsystem Architecture (`GAMES`)
 - **Extensible Games Hub (View A)**:
   - Header with `GAMES` and position badge (e.g. `1/7`).
   - 4-item scroll window with 1px horizontal dividers:
@@ -127,7 +145,7 @@
   - In Lunar Lander: `KEY3` = Main Thruster, `KEY2` = RCS Attitude Tilt / Next Mission / Restart.
   - In Pico Pong: `KEY3` = Paddle Up, `KEY2` = Paddle Down / Restart.
 
-## 8. Color Logo & Screensaver Architecture (`screensaver.py`)
+## 9. Color Logo & Screensaver Architecture (`screensaver.py`)
 - **Vibrant Multi-Color Logo**:
   - Pure vector graphics rendering of the official Raspberry Pi Pico W emblem without external bitmaps:
     - Upper emerald leaf cluster with highlights (`C_LEAF_HI`) and sepal collar.
@@ -145,15 +163,15 @@
   - The wake-up button press is consumed cleanly so it never triggers an accidental menu navigation or game action.
   - Background web server on port 80 and network probes run uninterrupted during screensaver.
 
-## 9. Web Server & Persistence
+## 10. Web Server & Persistence
 - Non-blocking socket listener on Port 80 (`s.setblocking(False)`), integrated into the main loop without blocking UI rendering or button response.
 - Post/Redirect/Get pattern (HTTP 303 to `/`) for all POST/GET mutations.
 - Monitored sites persistently saved to `sites.txt`, YouTube config in `youtube.txt`, high scores in `gq_hiscore.txt`.
 
-## 10. Flashing & Deployment
+## 11. Flashing & Deployment
 - Automated deployment via `upload_to_pico.py` on `COM3` at 115200 baud over MicroPython Raw REPL.
 
-## 11. 🧠 Note for Next AI: Deep Dive into `picoui.py`
+## 12. 🧠 Note for Next AI: Deep Dive into `picoui.py`
 Dear future AI agent, when you read or modify `picoui.py`, keep these crucial architecture details in mind:
 
 1. **The RGB565 Little-Endian Byte-Swap Rule**:

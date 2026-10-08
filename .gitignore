@@ -24,3 +24,9 @@ scratch_test.py
 .vscode/
 .DS_Store
 Thumbs.db
+
+# MicroPython byte-code build artifacts
+*.mpy
+main_app.py
+main_loader.py
+

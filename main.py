@@ -15,15 +15,25 @@ Web Server:
 - Remote LCD brightness & live text messaging to screen.
 """
 
-import time
 import gc
+gc.collect()
+
+# 1. Hardware Init (Pre-allocated in boot.py on pristine heap)
+try:
+    import boot
+    lcd = boot.lcd_instance
+except Exception:
+    from lcd1in44 import LCD_1inch44
+    lcd = LCD_1inch44(brightness=85)
+gc.collect()
+
+import time
 import machine
 from machine import ADC, Pin
 import network
 import socket
 import ssl
 import ujson
-from lcd1in44 import LCD_1inch44
 import picoui as ui
 from picoui import Theme
 
@@ -32,10 +42,6 @@ try:
 except Exception:
     WIFI_SSID = "YOUR_WIFI_SSID"
     WIFI_PASSWORD = "YOUR_WIFI_PASSWORD"
-
-# 1. Hardware Init
-gc.collect()
-lcd = LCD_1inch44(brightness=85)
 
 # 2. Start Wi-Fi Connection in Background
 wlan = network.WLAN(network.STA_IF)
@@ -65,6 +71,11 @@ for i in range(total_steps + 1):
     time.sleep_ms(step_delay_ms)
 
 # 4. Sensors & Network Utilities
+t_wifi_wait = time.time()
+while not wlan.isconnected() and (time.time() - t_wifi_wait < 3.0):
+    time.sleep_ms(100)
+last_wifi_retry = time.time()
+
 adc_temp = ADC(4)
 ICMP_ECHO_PKT = b'\x08\x00\x85\x54\x00\x01\x00\x01PicoPing'
 boot_time = time.time()
@@ -280,6 +291,7 @@ if wlan.isconnected() and monitored_sites:
 import weather
 import youtube_service as yt_svc
 import moon
+import lan_scanner
 
 def get_hiscore_val(fn, prefix="", default="0"):
     try:
@@ -408,10 +420,36 @@ def render_site_rows():
         )
     return "".join(rows) if rows else '<div style="color:#64748b;font-size:12px;padding:6px 0">No sites added</div>'
 
-def render_html(temp, free_kb, rssi, uptime_s):
+def render_lan_rows():
+    rows = []
+    for d in lan_svc.devices:
+        ports_str = ", ".join(f"{p}:{lan_scanner.PORT_NAMES.get(p, p)}" for p in d.get("ports", [])) if d.get("ports") else "Host Active (RST)"
+        badge_code, badge_var = lan_svc.get_role_badge_info(d["role"])
+        badge_col = "#10b981" if badge_var == "success" else ("#6366f1" if badge_var == "primary" else ("#22d3ee" if badge_var == "info" else "#fbbf24"))
+        rows.append(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #222938">'
+            f'<div><span style="font-size:13px;color:#fff;font-weight:600">{d["ip"]}</span> <span style="font-size:11px;color:{badge_col};font-weight:700">[{badge_code}]</span>'
+            f'<div style="font-size:10px;color:#9ca3af;margin-top:2px">{ports_str}</div></div>'
+            f'<div style="font-size:12px;color:#10b981;font-weight:700">{d.get("lat", 1)}ms</div>'
+            f'</div>'
+        )
+    scan_state = ' (Scanning...)' if lan_svc.is_scanning else ''
+    if not rows:
+        return f'<div style="color:#64748b;font-size:12px;padding:6px 0">No devices found yet{scan_state}</div>'
+    return "".join(rows)
+
+def stream_dashboard(client, temp, free_kb, rssi, uptime_s):
     up_count = sum(1 for s in monitored_sites if site_results.get(s, {}).get("up") is True)
     total_sites = len(monitored_sites)
     cloud_summary = f"{up_count}/{total_sites} UP" if total_sites > 0 else "0 SITES"
+
+    client.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Pico W Monitor</title><style>body{font-family:-apple-system,system-ui,sans-serif;background:#0b0f19;color:#fff;margin:0;padding:16px;display:flex;justify-content:center}.c{background:#161b26;border:1px solid #384253;border-radius:12px;padding:18px;max-width:390px;width:100%}h1{font-size:18px;margin:0 0 14px;color:#6366f1;display:flex;justify-content:space-between;align-items:center}.badge{background:rgba(16,185,129,0.18);color:#34d399;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px}.g{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}.s{background:#0b0f19;border:1px solid #222938;border-radius:8px;padding:10px}.l{font-size:10px;color:#9ca3af;text-transform:uppercase}.v{font-size:16px;font-weight:700;margin-top:2px;color:#22d3ee}.sec{font-size:12px;color:#9ca3af;margin:14px 0 6px;font-weight:600}.btns{display:flex;gap:6px}button{flex:1;background:#222938;border:1px solid #384253;color:#fff;padding:8px 0;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}button:hover{background:#6366f1}form{display:flex;gap:6px;margin-top:6px}input{flex:1;background:#0b0f19;border:1px solid #384253;border-radius:6px;color:#fff;padding:8px 10px;font-size:13px}.bsend{background:#6366f1;border:none;flex:none;padding:8px 14px;border-radius:6px;color:#fff;font-weight:600;cursor:pointer}.site-box{background:#0b0f19;border:1px solid #222938;border-radius:8px;padding:4px 12px;margin-bottom:8px}</style></head><body><div class=\"c\"><h1>Pico W Monitor <span class=\"badge\">ONLINE</span></h1>")
+
+    client.sendall(f'<div class="g"><div class="s"><div class="l">Core Temp</div><div class="v">{temp:.1f} &deg;C</div></div><div class="s"><div class="l">Free RAM</div><div class="v">{free_kb} KB</div></div><div class="s"><div class="l">Wi-Fi Signal</div><div class="v">{rssi} dBm</div></div><div class="s"><div class="l">Websites</div><div class="v" style="color:#10b981">{cloud_summary}</div></div></div>'.encode())
+
+    client.sendall(f'<div class="sec">Monitored Websites ({total_sites})</div><div class="site-box">{render_site_rows()}</div><form action="/" method="GET" style="display:flex;gap:6px"><input type="text" name="add" placeholder="Host (e.g. cloudflare.com)" maxlength="24" required style="flex:2"><input type="number" name="port" value="80" placeholder="80" min="1" max="65535" style="flex:1;max-width:64px"><button type="submit" class="bsend">Add</button></form>'.encode())
+
+    client.sendall(f'<div class="sec">LAN Devices &amp; Services ({len(lan_svc.devices)})</div><div class="site-box">{render_lan_rows()}</div><form action="/" method="GET" style="margin-top:4px"><input type="hidden" name="lan_scan" value="1"><button type="submit" class="bsend" style="background:#059669;width:100%">Scan Local LAN ({lan_svc.subnet_base}0/24)</button></form>'.encode())
 
     yt_title = yt_data.get("title", "YouTube")
     session_gain = max(0, yt_data["views"] - yt_svc.yt_initial_views) if yt_svc.yt_initial_views > 0 else 0
@@ -421,101 +459,16 @@ def render_html(temp, free_kb, rssi, uptime_s):
     else:
         yt_badge = f'<span style="color:#fbbf24;font-weight:700">{yt_data.get("status", "WAIT")}</span>'
     yt_chan_disp = yt_svc.yt_channel_id if yt_svc.yt_channel_id else "Not set"
+    client.sendall(f'<div class="sec">YouTube Tracker</div><div class="site-box" style="padding:10px 12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><span style="font-size:13px;color:#fff;font-weight:600">{yt_title}</span> <span style="font-size:11px;color:#64748b">[{yt_chan_disp}]</span></div><div>{yt_badge}</div></div><form action="/" method="GET" style="display:flex;flex-direction:column;gap:6px;margin:0"><input type="text" name="yt_ch" value="{yt_svc.yt_channel_id}" placeholder="Channel ID (UC...) or @handle" maxlength="32" required><input type="password" name="yt_key" value="{yt_svc.yt_api_key}" placeholder="YouTube Data API v3 Key" maxlength="50" required><button type="submit" class="bsend" style="background:#f43f5e;width:100%">Save &amp; Fetch Stats</button></form></div>'.encode())
 
     wx_city = loc_data["city"]
     wx_desc = weather_data["desc"]
     wx_t_str = f"{weather_data['temp']:.1f}&deg;C" if weather_data["temp"] is not None else "--"
     wx_hum_str = f"{weather_data['humidity']}%" if weather_data["humidity"] is not None else "--"
     wx_wnd_str = f"{weather_data['wind']:.1f} km/h" if weather_data["wind"] is not None else "--"
+    client.sendall(f'<div class="sec">Local Weather (Auto-Detected)</div><div class="site-box" style="padding:10px 12px"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:13px;color:#fff;font-weight:600">{wx_city}</span> <span style="font-size:11px;color:#22d3ee;margin-left:6px;font-weight:700">{wx_desc}</span></div><div style="font-size:16px;font-weight:700;color:#fbbf24">{wx_t_str}</div></div><div style="font-size:11px;color:#9ca3af;margin-top:6px">Humidity: <span style="color:#fff">{wx_hum_str}</span> &bull; Wind: <span style="color:#fff">{wx_wnd_str}</span></div><form action="/" method="GET" style="margin-top:8px"><input type="hidden" name="wx_sync" value="1"><button type="submit" class="bsend" style="background:#0284c7;width:100%">Re-Sync Weather</button></form></div>'.encode())
 
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pico W Monitor</title>
-<style>
-body{{font-family:-apple-system,system-ui,sans-serif;background:#0b0f19;color:#fff;margin:0;padding:16px;display:flex;justify-content:center}}
-.c{{background:#161b26;border:1px solid #384253;border-radius:12px;padding:18px;max-width:390px;width:100%}}
-h1{{font-size:18px;margin:0 0 14px;color:#6366f1;display:flex;justify-content:space-between;align-items:center}}
-.badge{{background:rgba(16,185,129,0.18);color:#34d399;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px}}
-.g{{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}}
-.s{{background:#0b0f19;border:1px solid #222938;border-radius:8px;padding:10px}}
-.l{{font-size:10px;color:#9ca3af;text-transform:uppercase}}
-.v{{font-size:16px;font-weight:700;margin-top:2px;color:#22d3ee}}
-.sec{{font-size:12px;color:#9ca3af;margin:14px 0 6px;font-weight:600}}
-.btns{{display:flex;gap:6px}}
-button{{flex:1;background:#222938;border:1px solid #384253;color:#fff;padding:8px 0;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}}
-button:hover{{background:#6366f1}}
-form{{display:flex;gap:6px;margin-top:6px}}
-input{{flex:1;background:#0b0f19;border:1px solid #384253;border-radius:6px;color:#fff;padding:8px 10px;font-size:13px}}
-.bsend{{background:#6366f1;border:none;flex:none;padding:8px 14px;border-radius:6px;color:#fff;font-weight:600;cursor:pointer}}
-.site-box{{background:#0b0f19;border:1px solid #222938;border-radius:8px;padding:4px 12px;margin-bottom:8px}}
-</style>
-</head>
-<body>
-<div class="c">
-<h1>Pico W Monitor <span class="badge">ONLINE</span></h1>
-<div class="g">
-<div class="s"><div class="l">Core Temp</div><div class="v">{temp:.1f} &deg;C</div></div>
-<div class="s"><div class="l">Free RAM</div><div class="v">{free_kb} KB</div></div>
-<div class="s"><div class="l">Wi-Fi Signal</div><div class="v">{rssi} dBm</div></div>
-<div class="s"><div class="l">Websites</div><div class="v" style="color:#10b981">{cloud_summary}</div></div>
-</div>
-
-<div class="sec">Monitored Websites ({total_sites})</div>
-<div class="site-box">
-{render_site_rows()}
-</div>
-<form action="/" method="GET" style="display:flex;gap:6px">
-<input type="text" name="add" placeholder="Host (e.g. cloudflare.com)" maxlength="24" required style="flex:2">
-<input type="number" name="port" value="80" placeholder="80" min="1" max="65535" style="flex:1;max-width:64px">
-<button type="submit" class="bsend">Add</button>
-</form>
-
-<div class="sec">YouTube Tracker</div>
-<div class="site-box" style="padding:10px 12px">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-<div><span style="font-size:13px;color:#fff;font-weight:600">{yt_title}</span> <span style="font-size:11px;color:#64748b">[{yt_chan_disp}]</span></div>
-<div>{yt_badge}</div>
-</div>
-<form action="/" method="GET" style="display:flex;flex-direction:column;gap:6px;margin:0">
-<input type="text" name="yt_ch" value="{yt_svc.yt_channel_id}" placeholder="Channel ID (UC...) or @handle" maxlength="32" required>
-<input type="password" name="yt_key" value="{yt_svc.yt_api_key}" placeholder="YouTube Data API v3 Key" maxlength="50" required>
-<button type="submit" class="bsend" style="background:#f43f5e;width:100%">Save &amp; Fetch Stats</button>
-</form>
-</div>
-
-<div class="sec">Local Weather (Auto-Detected)</div>
-<div class="site-box" style="padding:10px 12px">
-<div style="display:flex;justify-content:space-between;align-items:center">
-<div><span style="font-size:13px;color:#fff;font-weight:600">{wx_city}</span> <span style="font-size:11px;color:#22d3ee;margin-left:6px;font-weight:700">{wx_desc}</span></div>
-<div style="font-size:16px;font-weight:700;color:#fbbf24">{wx_t_str}</div>
-</div>
-<div style="font-size:11px;color:#9ca3af;margin-top:6px">Humidity: <span style="color:#fff">{wx_hum_str}</span> &bull; Wind: <span style="color:#fff">{wx_wnd_str}</span></div>
-<form action="/" method="GET" style="margin-top:8px">
-<input type="hidden" name="wx_sync" value="1">
-<button type="submit" class="bsend" style="background:#0284c7;width:100%">Re-Sync Weather</button>
-</form>
-</div>
-
-<div class="sec">Screen Brightness</div>
-<div class="btns">
-<a href="/?bl=25" style="flex:1"><button>25%</button></a>
-<a href="/?bl=50" style="flex:1"><button>50%</button></a>
-<a href="/?bl=75" style="flex:1"><button>75%</button></a>
-<a href="/?bl=100" style="flex:1"><button>100%</button></a>
-</div>
-
-<div class="sec">Send Message to LCD</div>
-<form action="/" method="GET">
-<input type="text" name="msg" placeholder="Type alert..." maxlength="20">
-<button type="submit" class="bsend">Send</button>
-</form>
-<div style="font-size:11px;color:#64748b;margin-top:14px;text-align:center">Uptime: {uptime_s}s | RP2040 @ 133MHz</div>
-</div>
-</body>
-</html>"""
+    client.sendall(f'<div class="sec">Screen Brightness</div><div class="btns"><a href="/?bl=25" style="flex:1"><button>25%</button></a><a href="/?bl=50" style="flex:1"><button>50%</button></a><a href="/?bl=75" style="flex:1"><button>75%</button></a><a href="/?bl=100" style="flex:1"><button>100%</button></a></div><div class="sec">Send Message to LCD</div><form action="/" method="GET"><input type="text" name="msg" placeholder="Type alert..." maxlength="20"><button type="submit" class="bsend">Send</button></form><div style="font-size:11px;color:#64748b;margin-top:14px;text-align:center">Uptime: {uptime_s}s | RP2040 @ 133MHz</div></div></body></html>'.encode())
 
 def poll_web_server():
     global srv, web_alert_msg, web_alert_time, yt_channel_id, yt_api_key
@@ -627,6 +580,10 @@ def poll_web_server():
             is_action = True
             if wlan.isconnected():
                 fetch_weather()
+        elif "lan_scan=" in req:
+            is_action = True
+            if wlan.isconnected():
+                lan_svc.start_scan(full=True)
 
         if is_action:
             client.sendall(b"HTTP/1.1 303 See Other\r\nLocation: /\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
@@ -640,14 +597,12 @@ def poll_web_server():
             rssi = -54
         uptime = int(time.time() - boot_time)
 
-        html = render_html(temp, free_kb, rssi, uptime)
-        resp_body = html.encode('utf-8')
-        header_resp = f"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {len(resp_body)}\r\nConnection: close\r\n\r\n".encode('utf-8')
-        full_resp = header_resp + resp_body
-        for i in range(0, len(full_resp), 512):
-            client.sendall(full_resp[i:i+512])
-    except Exception:
-        pass
+        stream_dashboard(client, temp, free_kb, rssi, uptime)
+        gc.collect()
+    except Exception as e:
+        import sys
+        print("Web Srv Exception:")
+        sys.print_exception(e)
     finally:
         try:
             client.close()
@@ -665,7 +620,11 @@ last_k3 = False
 last_k2 = False
 last_k1 = False
 
-screen_names = ["device", "ping", "cloud", "yt", "wx", "moon", "games", "about"]
+screen_names = ["device", "ping", "lan", "cloud", "yt", "wx", "moon", "games", "about"]
+
+lan_svc = lan_scanner.LanScanner()
+lan_cursor = 0
+lan_detail_view = False
 
 dev_cursor = 0        # 0..2 ("CORE", "NET", "MEM")
 dev_detail_view = False
@@ -677,8 +636,20 @@ screensaver_active = False
 last_input_time = time.time()
 
 while True:
+    # 0. Wi-Fi Reconnect Watchdog
+    if not wlan.isconnected() and (time.time() - last_wifi_retry > 8):
+        try:
+            wlan.connect(WIFI_SSID, WIFI_PASSWORD)
+        except Exception:
+            pass
+        last_wifi_retry = time.time()
+
     # 1. Non-blocking web server poll
     poll_web_server()
+
+    # 1b. Non-blocking background LAN scan step
+    if wlan.isconnected() and lan_svc.is_scanning:
+        lan_svc.step_scan()
 
     # 2. Periodic background check of monitored websites (one site every 15s)
     if wlan.isconnected() and monitored_sites and (time.time() - last_site_check_time > 15):
@@ -756,6 +727,10 @@ while True:
                     ping_ms = lat
                     ping_status = st_msg
                     last_live_ping_time = time.time()
+                elif screen == "lan":
+                    lan_detail_view = False
+                    if not lan_svc.devices and not lan_svc.is_scanning:
+                        lan_svc.start_scan()
                 elif screen == "cloud":
                     site_detail_view = False
                     if monitored_sites:
@@ -826,6 +801,33 @@ while True:
                         ping_ms = lat
                         ping_status = st_msg
                         last_live_ping_time = time.time()
+            elif screen == "lan":
+                if not lan_detail_view:
+                    if k1:
+                        screen = "menu"
+                    elif k3:
+                        if lan_svc.devices:
+                            lan_cursor = (lan_cursor + 1) % len(lan_svc.devices)
+                    elif k2:
+                        if lan_svc.devices:
+                            lan_detail_view = True
+                        else:
+                            lan_svc.start_scan(full=True)
+                else:
+                    if k1:
+                        lan_detail_view = False
+                    elif k3:
+                        if lan_svc.devices:
+                            lan_cursor = (lan_cursor + 1) % len(lan_svc.devices)
+                    elif k2:
+                        if lan_svc.devices:
+                            cur_d = lan_svc.devices[lan_cursor % len(lan_svc.devices)]
+                            _, role, p, lat = lan_svc.probe_host_full(cur_d["ip"])
+                            cur_d["role"] = role
+                            cur_d["ports"] = p
+                            cur_d["lat"] = lat
+                            cur_d["seen"] = int(time.time())
+                            lan_svc.save_devices()
             elif screen == "cloud":
                 if site_detail_view:
                     if k1:
@@ -988,9 +990,12 @@ while True:
 
         about_val = "PORT 80" if wlan.isconnected() else "PICO"
 
+        lan_val = f"{len(lan_svc.devices)} DEV" if lan_svc.devices else ("SCAN" if lan_svc.is_scanning else "0 DEV")
+
         menu_items = [
             ("DEV", temp_val, Theme.PRIMARY),
             ("PING", ping_val, Theme.INFO),
+            ("LAN", lan_val, Theme.INFO),
             ("SITES", cloud_val, cloud_col),
             ("YT", yt_val, yt_col),
             ("WX", wx_val, wx_col),
@@ -1001,9 +1006,15 @@ while True:
 
         start_y = 20
         row_h = 13
+        vis_count = 8
+        top_idx = max(0, min(menu_idx - 3, len(menu_items) - vis_count))
 
-        for idx, (title, val, col) in enumerate(menu_items):
-            cy = start_y + idx * row_h
+        for i in range(vis_count):
+            idx = top_idx + i
+            if idx >= len(menu_items):
+                break
+            title, val, col = menu_items[idx]
+            cy = start_y + i * row_h
             is_sel = (menu_idx == idx)
 
             if is_sel:
@@ -1258,6 +1269,14 @@ while True:
             hist = ping_history.get(t_ip, [])
             ui.latency_chart(lcd, 6, 71, 116, 55, hist, min_val=min_v, max_val=max_v)
 
+    # --------------------------------------------------------------------------
+    # SCREEN 3.5: LOCAL NETWORK (LAN Explorer - View A: List + View B: Detail)
+    # --------------------------------------------------------------------------
+    elif screen == "lan":
+        if not lan_detail_view:
+            lan_svc.render_list_view(lcd, lan_cursor)
+        else:
+            lan_svc.render_detail_view(lcd, lan_cursor)
 
     # --------------------------------------------------------------------------
     # SCREEN 4: MONITORED WEBSITES (Ultra-Minimalist, No Boxes)
